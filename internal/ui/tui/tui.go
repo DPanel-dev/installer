@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -131,6 +132,7 @@ type model struct {
 	error           error
 	envCheck        *EnvironmentCheck
 	dockerInstalled bool
+	osType          string // "windows", "darwin", "linux"
 }
 
 // EnvironmentCheck holds environment check results
@@ -405,10 +407,19 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 
 	case StepInstallDocker:
-		if m.cursor == 0 {
-			m.error = fmt.Errorf("automatic Docker installation is not implemented yet")
-			m.step = StepError
+		if m.osType == "linux" {
+			// Linux: option 0 is install Docker, option 1 is skip
+			if m.cursor == 0 {
+				m.error = fmt.Errorf("automatic Docker installation is not implemented yet")
+				m.step = StepError
+			} else {
+				// Skip Docker installation, use binary
+				m.config.InstallType = "binary"
+				m.step = StepVersion
+				m.setupVersionChoices()
+			}
 		} else {
+			// Windows/macOS: only option is to skip (binary installation)
 			m.config.InstallType = "binary"
 			m.step = StepVersion
 			m.setupVersionChoices()
@@ -694,20 +705,32 @@ func (m *model) setupActionChoices() {
 		i18n.T("uninstall_panel"),
 	}
 	m.descriptions = []string{
-		"Install a new DPanel instance",
-		"Upgrade existing DPanel installation",
-		"Remove DPanel from your system",
+		i18n.T("install_panel_desc"),
+		i18n.T("upgrade_panel_desc"),
+		i18n.T("uninstall_panel_desc"),
 	}
 }
 
 func (m *model) setupInstallDockerChoices() {
-	m.choices = []string{
-		i18n.T("install_docker"),
-		i18n.T("skip_docker_install"),
-	}
-	m.descriptions = []string{
-		"Install Docker/Podman automatically",
-		"Skip and use binary installation instead",
+	// Different options based on OS
+	if m.osType == "linux" {
+		// Linux: can auto-install Docker
+		m.choices = []string{
+			i18n.T("install_docker"),
+			i18n.T("skip_docker_install"),
+		}
+		m.descriptions = []string{
+			i18n.T("install_docker_desc"),
+			i18n.T("skip_docker_install_desc"),
+		}
+	} else {
+		// Windows/macOS: manual installation required
+		m.choices = []string{
+			i18n.T("skip_docker_install"),
+		}
+		m.descriptions = []string{
+			i18n.T("manual_docker_prompt"),
+		}
 	}
 }
 
@@ -877,6 +900,21 @@ func (m model) renderInput() string {
 func (m model) renderEnvironmentCheck() string {
 	var s strings.Builder
 
+	// Show OS information
+	osName := ""
+	switch m.osType {
+	case "windows":
+		osName = "Windows"
+	case "darwin":
+		osName = "macOS"
+	case "linux":
+		osName = "Linux"
+	default:
+		osName = m.osType
+	}
+	s.WriteString(infoStyle.Render(fmt.Sprintf("OS: %s", osName)))
+	s.WriteString("\n")
+
 	if m.envCheck != nil {
 		if m.envCheck.DockerAvailable {
 			s.WriteString(successStyle.Render("✓ " + i18n.T("docker_detected")))
@@ -896,6 +934,24 @@ func (m model) renderEnvironmentCheck() string {
 				s.WriteString(errorStyle.Render("✗ " + i18n.T("permission_denied")))
 			}
 			s.WriteString("\n")
+		}
+
+		// Show guidance if no Docker available
+		if !m.envCheck.DockerAvailable && !m.envCheck.PodmanAvailable {
+			s.WriteString("\n")
+			if m.osType == "linux" {
+				s.WriteString(infoStyle.Render("You can choose to install Docker automatically or use binary installation."))
+			} else {
+				s.WriteString(infoStyle.Render("Please install Docker Desktop manually:"))
+				s.WriteString("\n")
+				if m.osType == "windows" {
+					s.WriteString(infoStyle.Render("https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"))
+				} else if m.osType == "darwin" {
+					s.WriteString(infoStyle.Render("https://desktop.docker.com/mac/main/amd64/Docker.dmg"))
+				}
+				s.WriteString("\n")
+				s.WriteString(infoStyle.Render("Or continue with binary installation."))
+			}
 		}
 	}
 
@@ -946,6 +1002,9 @@ func (m model) renderConfirm() string {
 
 func (m *model) runEnvironmentCheck() {
 	m.envCheck = &EnvironmentCheck{}
+
+	// Detect OS type
+	m.osType = runtime.GOOS
 
 	// Check for Docker command
 	dockerExists := false

@@ -2,8 +2,11 @@
   "select_language": "Select Language",
   "select_action": "Select Action",
   "install_panel": "Install Panel",
+  "install_panel_desc": "Install a new DPanel instance",
   "upgrade_panel": "Upgrade Panel",
+  "upgrade_panel_desc": "Upgrade existing DPanel installation",
   "uninstall_panel": "Uninstall Panel",
+  "uninstall_panel_desc": "Remove DPanel from your system",
 
   "environment_check": "Environment Check",
   "docker_detected": "Docker detected",
@@ -15,8 +18,11 @@
   "registry_check": "Checking registry connectivity...",
 
   "install_docker": "Install Docker",
+  "install_docker_desc": "Install Docker/Podman automatically (Linux only)",
   "skip_docker_install": "Skip Docker Installation",
+  "skip_docker_install_desc": "Skip and use binary installation instead",
   "install_docker_prompt": "Docker is not installed. Do you want to install Docker now?",
+  "manual_docker_prompt": "Please install Docker Desktop manually and restart the installer.",
 
   "install_method": "Installation Method",
   "container_install": "Container Installation",

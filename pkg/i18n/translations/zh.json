@@ -2,8 +2,11 @@
   "select_language": "选择语言",
   "select_action": "选择操作",
   "install_panel": "安装面板",
+  "install_panel_desc": "安装新的 DPanel 实例",
   "upgrade_panel": "升级面板",
+  "upgrade_panel_desc": "升级现有的 DPanel 安装",
   "uninstall_panel": "卸载面板",
+  "uninstall_panel_desc": "从系统中移除 DPanel",
 
   "environment_check": "环境检测",
   "docker_detected": "检测到 Docker",
@@ -15,8 +18,11 @@
   "registry_check": "检测镜像仓库连通性...",
 
   "install_docker": "安装 Docker",
+  "install_docker_desc": "自动安装 Docker/Podman（仅限 Linux）",
   "skip_docker_install": "跳过 Docker 安装",
+  "skip_docker_install_desc": "跳过并使用二进制安装方式",
   "install_docker_prompt": "系统未安装 Docker，是否现在安装？",
+  "manual_docker_prompt": "请手动安装 Docker Desktop 后重新运行安装器。",
 
   "install_method": "安装方式",
   "container_install": "容器安装",
