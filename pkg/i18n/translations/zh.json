@@ -1,0 +1,120 @@
+{
+  "select_language": "选择语言",
+  "select_action": "选择操作",
+  "install_panel": "安装面板",
+  "upgrade_panel": "升级面板",
+  "uninstall_panel": "卸载面板",
+
+  "environment_check": "环境检测",
+  "docker_detected": "检测到 Docker",
+  "podman_detected": "检测到 Podman",
+  "docker_not_found": "未找到 Docker/Podman",
+  "docker_permission_denied": "没有执行 Docker/Podman 命令的权限",
+  "registry_check": "检测镜像仓库连通性...",
+
+  "install_docker": "安装 Docker",
+  "skip_docker_install": "跳过 Docker 安装",
+  "install_docker_prompt": "系统未安装 Docker，是否现在安装？",
+
+  "install_method": "安装方式",
+  "container_install": "容器安装",
+  "container_install_desc": "在 Docker/Podman 容器中运行 DPanel",
+  "binary_install": "二进制安装",
+  "binary_install_desc": "将 DPanel 安装为独立二进制程序",
+  "binary_only_notice": "仅支持二进制安装（未检测到 Docker/Podman）",
+
+  "select_version": "选择版本",
+  "community_edition": "社区版",
+  "community_edition_desc": "免费开源版本",
+  "professional_edition": "专业版",
+  "professional_edition_desc": "生产环境高级功能（访问 https://dpanel.io/pricing 了解详情）",
+  "development_edition": "开发版",
+  "development_edition_desc": "最新功能，可能不稳定",
+
+  "select_edition": "选择版本类型",
+  "standard_edition": "标准版",
+  "standard_edition_desc": "包含 Nginx 和 SSL 证书支持（需要占用 80 和 443 端口）",
+  "lite_edition": "精简版",
+  "lite_edition_desc": "仅容器管理功能，资源占用更少",
+
+  "select_os": "选择基础系统",
+  "alpine": "Alpine Linux",
+  "alpine_desc": "基于 musl，更轻量",
+  "debian": "Debian",
+  "debian_desc": "基于 glibc，更稳定",
+
+  "select_registry": "选择镜像仓库",
+  "docker_hub": "Docker Hub",
+  "docker_hub_desc": "Docker 官方仓库",
+  "aliyun": "阿里云",
+  "aliyun_desc": "阿里云镜像，国内下载更快",
+  "auto_detect": "自动检测",
+
+  "docker_connection": "Docker/Podman 连接",
+  "local_sock": "本地 Socket",
+  "local_sock_desc": "通过 Unix socket 连接本地 Docker/Podman",
+  "remote_tcp": "远程 TCP",
+  "remote_tcp_desc": "通过 TCP 连接远程 Docker/Podman",
+  "remote_ssh": "远程 SSH",
+  "remote_ssh_desc": "通过 SSH 连接远程 Docker/Podman",
+
+  "sock_path": "Socket 路径",
+  "sock_path_desc": "Unix socket 文件路径（如：/var/run/docker.sock）",
+  "docker_host": "Docker 主机",
+  "docker_host_desc": "远程主机地址（ip:port）",
+  "enable_tls": "启用 TLS",
+  "enable_tls_prompt": "是否为 TCP 连接启用 TLS？",
+  "tls_path": "TLS 证书路径",
+  "tls_path_desc": "包含 TLS 证书的目录",
+
+  "ssh_user": "SSH 用户名",
+  "ssh_password": "SSH 密码",
+  "ssh_key": "SSH 私钥路径",
+  "ssh_auth_desc": "输入 SSH 认证信息",
+
+  "container_name": "容器名称",
+  "container_name_desc": "DPanel 容器的名称",
+  "container_exists": "容器已存在，请选择其他名称",
+
+  "access_port": "访问端口",
+  "access_port_desc": "DPanel Web 界面访问端口（0 表示随机端口）",
+  "random_port": "随机端口",
+
+  "data_path": "数据存储路径",
+  "data_path_desc": "存储 DPanel 数据的目录",
+  "directory_not_empty": "目录不为空，请选择一个空目录",
+
+  "proxy_address": "代理地址",
+  "proxy_address_desc": "容器访问外部资源的代理（如不需要可留空）",
+  "docker_daemon_proxy": "镜像加速请配置 Docker daemon.json",
+
+  "dns_address": "DNS 地址",
+  "dns_address_desc": "容器 DNS 服务器（留空使用默认配置）",
+
+  "confirm_install": "确认安装",
+  "configuration_summary": "配置摘要",
+  "start_installation": "开始安装",
+  "back_to_modify": "返回修改",
+
+  "installing": "正在安装...",
+  "please_wait": "请稍候...",
+  "installation_complete": "安装完成！",
+  "installation_failed": "安装失败",
+
+  "upgrade_not_implemented": "升级功能尚未实现。\n\n请暂时使用 CLI 模式。",
+  "uninstall_not_implemented": "卸载功能尚未实现。\n\n请暂时使用 CLI 模式。",
+
+  "yes": "是",
+  "no": "否",
+  "confirm": "确认",
+  "cancel": "取消",
+  "back": "返回",
+  "next": "下一步",
+  "quit": "退出",
+  "press_enter": "按回车键继续",
+  "enter_value": "输入值",
+  "quit_prompt": "按 'q' 退出",
+
+  "title": "DPanel 安装器",
+  "step": "步骤"
+}

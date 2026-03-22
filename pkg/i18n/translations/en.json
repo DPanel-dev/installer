@@ -1,0 +1,120 @@
+{
+  "select_language": "Select Language",
+  "select_action": "Select Action",
+  "install_panel": "Install Panel",
+  "upgrade_panel": "Upgrade Panel",
+  "uninstall_panel": "Uninstall Panel",
+
+  "environment_check": "Environment Check",
+  "docker_detected": "Docker detected",
+  "podman_detected": "Podman detected",
+  "docker_not_found": "Docker/Podman not found",
+  "docker_permission_denied": "No permission to execute Docker/Podman commands",
+  "registry_check": "Checking registry connectivity...",
+
+  "install_docker": "Install Docker",
+  "skip_docker_install": "Skip Docker Installation",
+  "install_docker_prompt": "Docker is not installed. Do you want to install Docker now?",
+
+  "install_method": "Installation Method",
+  "container_install": "Container Installation",
+  "container_install_desc": "Run DPanel in a Docker/Podman container",
+  "binary_install": "Binary Installation",
+  "binary_install_desc": "Install DPanel as a standalone binary",
+  "binary_only_notice": "Binary installation only (Docker/Podman not available)",
+
+  "select_version": "Select Version",
+  "community_edition": "Community Edition",
+  "community_edition_desc": "Free and open source version",
+  "professional_edition": "Professional Edition",
+  "professional_edition_desc": "Advanced features for production (https://dpanel.io/pricing)",
+  "development_edition": "Development Edition",
+  "development_edition_desc": "Latest features, may be unstable",
+
+  "select_edition": "Select Edition",
+  "standard_edition": "Standard Edition",
+  "standard_edition_desc": "Includes Nginx and SSL certificate support (requires ports 80 & 443)",
+  "lite_edition": "Lite Edition",
+  "lite_edition_desc": "Container management only, lighter resource usage",
+
+  "select_os": "Select Base OS",
+  "alpine": "Alpine Linux",
+  "alpine_desc": "Based on musl, lighter weight",
+  "debian": "Debian",
+  "debian_desc": "Based on glibc, more stable",
+
+  "select_registry": "Select Image Registry",
+  "docker_hub": "Docker Hub",
+  "docker_hub_desc": "Docker official registry",
+  "aliyun": "Aliyun (China)",
+  "aliyun_desc": "Aliyun mirror for faster downloads in China",
+  "auto_detect": "Auto Detect",
+
+  "docker_connection": "Docker/Podman Connection",
+  "local_sock": "Local Socket",
+  "local_sock_desc": "Connect to local Docker/Podman via Unix socket",
+  "remote_tcp": "Remote TCP",
+  "remote_tcp_desc": "Connect to remote Docker/Podman via TCP",
+  "remote_ssh": "Remote SSH",
+  "remote_ssh_desc": "Connect to remote Docker/Podman via SSH",
+
+  "sock_path": "Socket Path",
+  "sock_path_desc": "Unix socket file path (e.g., /var/run/docker.sock)",
+  "docker_host": "Docker Host",
+  "docker_host_desc": "Remote host address (ip:port)",
+  "enable_tls": "Enable TLS",
+  "enable_tls_prompt": "Enable TLS for TCP connection?",
+  "tls_path": "TLS Certificate Path",
+  "tls_path_desc": "Directory containing TLS certificates",
+
+  "ssh_user": "SSH Username",
+  "ssh_password": "SSH Password",
+  "ssh_key": "SSH Private Key Path",
+  "ssh_auth_desc": "Enter SSH authentication credentials",
+
+  "container_name": "Container Name",
+  "container_name_desc": "Name for the DPanel container",
+  "container_exists": "Container already exists, please choose another name",
+
+  "access_port": "Access Port",
+  "access_port_desc": "Port for accessing DPanel web interface (0 for random)",
+  "random_port": "Random Port",
+
+  "data_path": "Data Storage Path",
+  "data_path_desc": "Directory for storing DPanel data",
+  "directory_not_empty": "Directory is not empty, please choose an empty directory",
+
+  "proxy_address": "Proxy Address",
+  "proxy_address_desc": "Proxy for container to access external resources (leave empty if not needed)",
+  "docker_daemon_proxy": "For image pull acceleration, configure Docker daemon.json",
+
+  "dns_address": "DNS Address",
+  "dns_address_desc": "DNS server for container (leave empty to use default)",
+
+  "confirm_install": "Confirm Installation",
+  "configuration_summary": "Configuration Summary",
+  "start_installation": "Start Installation",
+  "back_to_modify": "Back to Modify",
+
+  "installing": "Installing...",
+  "please_wait": "Please wait...",
+  "installation_complete": "Installation Completed Successfully!",
+  "installation_failed": "Installation Failed",
+
+  "upgrade_not_implemented": "Upgrade feature is not implemented yet.\n\nPlease use CLI mode for now.",
+  "uninstall_not_implemented": "Uninstall feature is not implemented yet.\n\nPlease use CLI mode for now.",
+
+  "yes": "Yes",
+  "no": "No",
+  "confirm": "Confirm",
+  "cancel": "Cancel",
+  "back": "Back",
+  "next": "Next",
+  "quit": "Quit",
+  "press_enter": "Press Enter to continue",
+  "enter_value": "Enter value",
+  "quit_prompt": "Press 'q' to quit",
+
+  "title": "DPanel Installer",
+  "step": "Step"
+}
