@@ -215,122 +215,120 @@ func (m model) View() string {
 
 	var content strings.Builder
 
-	// Single newline for top padding
+	// Top padding
 	content.WriteString("\n")
 
-	// Logo - only show on language selection
+	// Logo - show on all pages
+	content.WriteString(renderLogo())
+	content.WriteString("\n")
+
+	// Title with step indicator
 	if m.step == StepLanguage {
-		content.WriteString(renderLogo())
-		content.WriteString("\n")
-		content.WriteString(titleStyle.Render("Select Language / 选择语言"))
+		content.WriteString(titleStyle.Render(i18n.T("select_language") + " / Select Language"))
 		content.WriteString("\n")
 	} else {
-		// Title for other steps
-		content.WriteString(titleStyle.Render("🚀 " + i18n.T("title")))
+		content.WriteString(titleStyle.Render(i18n.Tf("title_with_step", m.step, StepError)))
 		content.WriteString("\n")
 	}
 
-	// Step indicator (skip for language selection)
-	if m.step != StepLanguage {
-		content.WriteString(infoStyle.Render(fmt.Sprintf("Step %d/%d", m.step, StepError)))
-		content.WriteString("\n")
-	}
+	// Spacer before content
+	content.WriteString("\n")
 
-	// Render current step
+	// Render current step content
 	switch m.step {
 	case StepLanguage:
 		content.WriteString(m.renderMenu())
 
 	case StepAction:
 		content.WriteString(subtitleStyle.Render(i18n.T("select_action")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepEnvironmentCheck:
 		content.WriteString(subtitleStyle.Render(i18n.T("environment_check")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderEnvironmentCheck())
 
 	case StepInstallDocker:
 		content.WriteString(subtitleStyle.Render(i18n.T("install_docker")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepInstallType:
 		content.WriteString(subtitleStyle.Render(i18n.T("install_method")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepVersion:
 		content.WriteString(subtitleStyle.Render(i18n.T("select_version")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepEdition:
 		content.WriteString(subtitleStyle.Render(i18n.T("select_edition")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepOS:
 		content.WriteString(subtitleStyle.Render(i18n.T("select_os")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepRegistry:
 		content.WriteString(subtitleStyle.Render(i18n.T("select_registry")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepDockerConnection:
 		content.WriteString(subtitleStyle.Render(i18n.T("docker_connection")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderMenu())
 
 	case StepDockerConfig, StepTLSConfig, StepSSHConfig,
 		StepContainerName, StepPort, StepDataPath, StepProxy, StepDNS:
 		content.WriteString(subtitleStyle.Render(m.getStepTitle()))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderInput())
 
 	case StepConfirm:
 		content.WriteString(subtitleStyle.Render(i18n.T("confirm_install")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		content.WriteString(m.renderConfirm())
 
 	case StepInstalling:
 		content.WriteString(subtitleStyle.Render(i18n.T("installing")))
-		content.WriteString("\n")
-		content.WriteString(i18n.T("please_wait"))
+		content.WriteString("\n\n")
+		content.WriteString(infoStyle.Render(i18n.T("please_wait")))
 		content.WriteString("\n")
 
 	case StepComplete:
 		content.WriteString(successStyle.Render(i18n.T("installation_complete")))
 		content.WriteString("\n")
-		content.WriteString(helpStyle.Render(i18n.T("quit_prompt")))
 
 	case StepError:
 		content.WriteString(errorStyle.Render(i18n.T("installation_failed")))
-		content.WriteString("\n")
+		content.WriteString("\n\n")
 		if m.error != nil {
 			content.WriteString(m.error.Error())
+			content.WriteString("\n")
 		}
+	}
+
+	// Spacer before help text
+	if m.step != StepComplete && m.step != StepError {
 		content.WriteString("\n")
-		content.WriteString(helpStyle.Render(i18n.T("quit_prompt")))
 	}
 
 	// Help text (except for final steps)
 	if m.step != StepComplete && m.step != StepError {
-		content.WriteString("\n")
-		if m.step == StepLanguage {
-			content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
-		} else {
-			content.WriteString(helpStyle.Render(i18n.T("help_navigation_with_back")))
-		}
+		content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
+	} else {
+		content.WriteString(helpStyle.Render(i18n.T("quit_prompt")))
 	}
 
 	content.WriteString("\n")
 
-	// Return content directly - no wrapping, full screen
+	// Return content
 	return content.String()
 }
 
@@ -912,7 +910,7 @@ func (m model) renderEnvironmentCheck() string {
 	default:
 		osName = m.osType
 	}
-	s.WriteString(infoStyle.Render(fmt.Sprintf("OS: %s", osName)))
+	s.WriteString(infoStyle.Render(i18n.T("os_label") + ": " + osName))
 	s.WriteString("\n")
 
 	if m.envCheck != nil {
@@ -940,17 +938,17 @@ func (m model) renderEnvironmentCheck() string {
 		if !m.envCheck.DockerAvailable && !m.envCheck.PodmanAvailable {
 			s.WriteString("\n")
 			if m.osType == "linux" {
-				s.WriteString(infoStyle.Render("You can choose to install Docker automatically or use binary installation."))
+				s.WriteString(infoStyle.Render(i18n.T("docker_choice_linux")))
 			} else {
-				s.WriteString(infoStyle.Render("Please install Docker Desktop manually:"))
+				s.WriteString(infoStyle.Render(i18n.T("docker_install_manual")))
 				s.WriteString("\n")
 				if m.osType == "windows" {
-					s.WriteString(infoStyle.Render("https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe"))
+					s.WriteString(infoStyle.Render(i18n.T("docker_download_windows")))
 				} else if m.osType == "darwin" {
-					s.WriteString(infoStyle.Render("https://desktop.docker.com/mac/main/amd64/Docker.dmg"))
+					s.WriteString(infoStyle.Render(i18n.T("docker_download_macos")))
 				}
 				s.WriteString("\n")
-				s.WriteString(infoStyle.Render("Or continue with binary installation."))
+				s.WriteString(infoStyle.Render(i18n.T("docker_continue_binary")))
 			}
 		}
 	}

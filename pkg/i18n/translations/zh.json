@@ -125,6 +125,15 @@
 
   "title": "DPanel 安装器",
   "step": "步骤",
+  "step_format": "步骤 %d/%d",
+  "title_with_step": "🚀 DPanel 安装器 - 步骤 %d/%d",
+  "os_label": "操作系统",
+
+  "docker_choice_linux": "您可以选择自动安装 Docker 或使用二进制安装。",
+  "docker_install_manual": "请手动安装 Docker Desktop：",
+  "docker_continue_binary": "或继续使用二进制安装。",
+  "docker_download_windows": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
+  "docker_download_macos": "https://desktop.docker.com/mac/main/amd64/Docker.dmg",
 
   "help_navigation": "↑/↓ 移动 | Enter 选择 | q 退出",
   "help_navigation_with_back": "↑/↓ 移动 | Enter 选择 | Esc/Backspace 返回 | q 退出"

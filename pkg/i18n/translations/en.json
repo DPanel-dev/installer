@@ -125,6 +125,15 @@
 
   "title": "DPanel Installer",
   "step": "Step",
+  "step_format": "Step %d/%d",
+  "title_with_step": "🚀 DPanel Installer - Step %d/%d",
+  "os_label": "OS",
+
+  "docker_choice_linux": "You can choose to install Docker automatically or use binary installation.",
+  "docker_install_manual": "Please install Docker Desktop manually:",
+  "docker_continue_binary": "Or continue with binary installation.",
+  "docker_download_windows": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
+  "docker_download_macos": "https://desktop.docker.com/mac/main/amd64/Docker.dmg",
 
   "help_navigation": "↑/↓ Navigate | Enter Select | q Quit",
   "help_navigation_with_back": "↑/↓ Navigate | Enter Select | Esc/Backspace Back | q Quit"
