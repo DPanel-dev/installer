@@ -10,6 +10,8 @@
   "podman_detected": "Podman detected",
   "docker_not_found": "Docker/Podman not found",
   "docker_permission_denied": "No permission to execute Docker/Podman commands",
+  "permission_ok": "Permission OK",
+  "permission_denied": "Permission denied",
   "registry_check": "Checking registry connectivity...",
 
   "install_docker": "Install Docker",
@@ -116,5 +118,8 @@
   "quit_prompt": "Press 'q' to quit",
 
   "title": "DPanel Installer",
-  "step": "Step"
+  "step": "Step",
+
+  "help_navigation": "↑/↓ Navigate | Enter Select | q Quit",
+  "help_navigation_with_back": "↑/↓ Navigate | Enter Select | Esc/Backspace Back | q Quit"
 }

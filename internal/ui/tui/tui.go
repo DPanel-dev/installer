@@ -320,9 +320,9 @@ func (m model) View() string {
 	if m.step != StepComplete && m.step != StepError {
 		content.WriteString("\n")
 		if m.step == StepLanguage {
-			content.WriteString(helpStyle.Render("↑/↓ Navigate | Enter Select | q Quit"))
+			content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
 		} else {
-			content.WriteString(helpStyle.Render("↑/↓ Navigate | Enter Select | Esc/Backspace Back | q Quit"))
+			content.WriteString(helpStyle.Render(i18n.T("help_navigation_with_back")))
 		}
 	}
 
@@ -879,21 +879,21 @@ func (m model) renderEnvironmentCheck() string {
 
 	if m.envCheck != nil {
 		if m.envCheck.DockerAvailable {
-			s.WriteString(successStyle.Render("✓ Docker detected"))
+			s.WriteString(successStyle.Render("✓ " + i18n.T("docker_detected")))
 			s.WriteString("\n")
 		} else if m.envCheck.PodmanAvailable {
-			s.WriteString(successStyle.Render("✓ Podman detected"))
+			s.WriteString(successStyle.Render("✓ " + i18n.T("podman_detected")))
 			s.WriteString("\n")
 		} else {
-			s.WriteString(errorStyle.Render("✗ Docker/Podman not found"))
+			s.WriteString(errorStyle.Render("✗ " + i18n.T("docker_not_found")))
 			s.WriteString("\n")
 		}
 
 		if m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable {
 			if m.envCheck.HasPermission {
-				s.WriteString(successStyle.Render("✓ Permission OK"))
+				s.WriteString(successStyle.Render("✓ " + i18n.T("permission_ok")))
 			} else {
-				s.WriteString(errorStyle.Render("✗ Permission denied"))
+				s.WriteString(errorStyle.Render("✗ " + i18n.T("permission_denied")))
 			}
 			s.WriteString("\n")
 		}

@@ -10,6 +10,8 @@
   "podman_detected": "检测到 Podman",
   "docker_not_found": "未找到 Docker/Podman",
   "docker_permission_denied": "没有执行 Docker/Podman 命令的权限",
+  "permission_ok": "权限正常",
+  "permission_denied": "权限不足",
   "registry_check": "检测镜像仓库连通性...",
 
   "install_docker": "安装 Docker",
@@ -116,5 +118,8 @@
   "quit_prompt": "按 'q' 退出",
 
   "title": "DPanel 安装器",
-  "step": "步骤"
+  "step": "步骤",
+
+  "help_navigation": "↑/↓ 移动 | Enter 选择 | q 退出",
+  "help_navigation_with_back": "↑/↓ 移动 | Enter 选择 | Esc/Backspace 返回 | q 退出"
 }
