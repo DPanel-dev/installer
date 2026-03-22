@@ -1,0 +1,7 @@
+{
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.automationProfile.windows": "PowerShell",
+  "go.alternateTools": {
+    "dlv": "C:\\Users\\Administrator\\go\\bin\\dlv.exe"
+  },
+}
