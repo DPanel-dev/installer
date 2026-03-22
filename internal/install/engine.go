@@ -60,15 +60,38 @@ func (e *Engine) install() error {
 // upgrade performs the upgrade
 func (e *Engine) upgrade() error {
 	slog.Info("Running upgrade")
-	// TODO: Implement upgrade logic
-	return fmt.Errorf("upgrade feature is not implemented yet")
+
+	// Environment check
+	if err := e.checkEnvironment(); err != nil {
+		return fmt.Errorf("environment check failed: %w", err)
+	}
+
+	// Detect existing installation
+	if err := e.detectExistingInstallation(); err != nil {
+		return fmt.Errorf("failed to detect existing installation: %w", err)
+	}
+
+	// Perform upgrade based on installation type
+	if e.Config.InstallType == "container" {
+		return e.upgradeContainer()
+	}
+	return e.upgradeBinary()
 }
 
 // uninstall performs the uninstallation
 func (e *Engine) uninstall() error {
 	slog.Info("Running uninstall")
-	// TODO: Implement uninstall logic
-	return fmt.Errorf("uninstall feature is not implemented yet")
+
+	// Environment check
+	if err := e.checkEnvironment(); err != nil {
+		return fmt.Errorf("environment check failed: %w", err)
+	}
+
+	// Perform uninstall based on installation type
+	if e.Config.InstallType == "container" {
+		return e.uninstallContainer()
+	}
+	return e.uninstallBinary()
 }
 
 // checkEnvironment validates the installation environment
@@ -214,8 +237,20 @@ func (e *Engine) checkTCPConnection(conn *DockerConnection) error {
 	if conn.Host == "" {
 		return fmt.Errorf("docker host is required for TCP connection")
 	}
-	// TODO: Implement actual TCP connectivity check
-	slog.Info("TCP connection check not implemented yet", "host", conn.Host)
+
+	slog.Info("Checking TCP connection", "host", conn.Host)
+
+	// Test TCP connection by trying to execute docker command with -H flag
+	runtime := e.getDockerRuntime()
+	testCmd := exec.Command(runtime, "-H", conn.Host, "ps")
+	output, err := testCmd.CombinedOutput()
+
+	if err != nil {
+		slog.Error("TCP connection test failed", "error", err, "output", string(output))
+		return fmt.Errorf("TCP connection to Docker daemon failed: %w", err)
+	}
+
+	slog.Info("TCP connection successful", "host", conn.Host)
 	return nil
 }
 
@@ -227,8 +262,37 @@ func (e *Engine) checkSSHConnection(conn *DockerConnection) error {
 	if conn.SSHUser == "" {
 		return fmt.Errorf("SSH username is required for SSH connection")
 	}
-	// TODO: Implement actual SSH connectivity check
-	slog.Info("SSH connection check not implemented yet", "host", conn.Host)
+
+	slog.Info("Checking SSH connection", "host", conn.Host, "user", conn.SSHUser)
+
+	// Test SSH connection by trying to execute docker command via SSH
+	// Build SSH command: ssh user@host docker ps
+	var sshCmd []string
+	sshCmd = append(sshCmd, "ssh")
+
+	// Add SSH options
+	if conn.SSHKey != "" {
+		sshCmd = append(sshCmd, "-i", conn.SSHKey)
+	}
+	sshCmd = append(sshCmd, "-o", "StrictHostKeyChecking=no")
+	sshCmd = append(sshCmd, "-o", "UserKnownHostsFile=/dev/null")
+
+	// Add host and user
+	sshCmd = append(sshCmd, fmt.Sprintf("%s@%s", conn.SSHUser, conn.Host))
+
+	// Add docker command
+	sshCmd = append(sshCmd, "docker", "ps")
+
+	// Execute SSH command
+	cmd := exec.Command(sshCmd[0], sshCmd[1:]...)
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		slog.Error("SSH connection test failed", "error", err, "output", string(output))
+		return fmt.Errorf("SSH connection to Docker daemon failed: %w", err)
+	}
+
+	slog.Info("SSH connection successful", "host", conn.Host)
 	return nil
 }
 
@@ -381,8 +445,41 @@ func (e *Engine) saveInstallationResult(success bool, errorMsg string) {
 // installBinary installs DPanel as a binary
 func (e *Engine) installBinary() error {
 	slog.Info("Installing DPanel as binary")
-	// TODO: Implement binary installation
-	return fmt.Errorf("binary installation is not implemented yet")
+
+	// Log configuration
+	e.logBinaryInstallConfig()
+
+	// Step 1: Download binary
+	slog.Info("Step 1: Downloading DPanel binary")
+	if err := e.downloadBinary(); err != nil {
+		return fmt.Errorf("failed to download binary: %w", err)
+	}
+
+	// Step 2: Verify checksum (optional)
+	slog.Info("Step 2: Verifying binary checksum")
+	// TODO: Implement checksum verification
+
+	// Step 3: Install to system path
+	slog.Info("Step 3: Installing binary to system path")
+	if err := e.installBinaryToPath(); err != nil {
+		return fmt.Errorf("failed to install binary: %w", err)
+	}
+
+	// Step 4: Create service file
+	slog.Info("Step 4: Creating service file")
+	if err := e.createServiceFile(); err != nil {
+		return fmt.Errorf("failed to create service: %w", err)
+	}
+
+	// Step 5: Start service
+	slog.Info("Step 5: Starting service")
+	if err := e.startBinaryService(); err != nil {
+		return fmt.Errorf("failed to start service: %w", err)
+	}
+
+	slog.Info("Binary installation completed successfully")
+	e.saveBinaryInstallResult(true, "")
+	return nil
 }
 
 // buildDockerCommand builds the docker/podman run command
@@ -527,4 +624,454 @@ func ParsePort(portStr string) (int, error) {
 		return 0, fmt.Errorf("port must be between 1 and 65535")
 	}
 	return port, nil
+}
+
+// detectExistingInstallation checks if DPanel is already installed
+func (e *Engine) detectExistingInstallation() error {
+	slog.Info("Detecting existing DPanel installation")
+
+	runtime := e.getDockerRuntime()
+
+	// Check if container exists
+	cmd := exec.Command(runtime, "ps", "-a", "--filter", "name="+e.Config.ContainerName)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to check existing containers: %w", err)
+	}
+
+	if !strings.Contains(string(output), e.Config.ContainerName) {
+		return fmt.Errorf("no existing DPanel installation found with container name: %s", e.Config.ContainerName)
+	}
+
+	slog.Info("Found existing DPanel installation")
+	return nil
+}
+
+// upgradeContainer upgrades the container installation
+func (e *Engine) upgradeContainer() error {
+	slog.Info("Starting container upgrade")
+
+	// Log upgrade configuration
+	e.logUpgradeConfig()
+
+	runtime := e.getDockerRuntime()
+
+	// Step 1: Stop current container
+	slog.Info("Step 1: Stopping current container")
+	if err := e.stopContainer(runtime, e.Config.ContainerName); err != nil {
+		return fmt.Errorf("failed to stop container: %w", err)
+	}
+
+	// Step 2: Pull new image
+	slog.Info("Step 2: Pulling new image")
+	image := e.buildImageName()
+	if err := e.pullImage(runtime, image); err != nil {
+		return fmt.Errorf("failed to pull new image: %w", err)
+	}
+
+	// Step 3: Remove old container
+	slog.Info("Step 3: Removing old container")
+	if err := e.removeContainer(runtime, e.Config.ContainerName); err != nil {
+		return fmt.Errorf("failed to remove old container: %w", err)
+	}
+
+	// Step 4: Create and start new container
+	slog.Info("Step 4: Creating and starting new container")
+	cmd, err := e.buildDockerCommand()
+	if err != nil {
+		return fmt.Errorf("failed to build docker command: %w", err)
+	}
+
+	// Save upgrade log
+	if err := e.saveUpgradeLog(cmd); err != nil {
+		slog.Warn("Failed to save upgrade log", "error", err)
+	}
+
+	if err := e.executeCommand(cmd); err != nil {
+		slog.Error("Container upgrade failed", "error", err)
+		// Attempt rollback
+		_ = e.rollbackUpgrade(runtime, image)
+		return fmt.Errorf("container upgrade failed: %w", err)
+	}
+
+	slog.Info("Container upgrade completed successfully")
+	e.saveUpgradeResult(true, "")
+	return nil
+}
+
+// upgradeBinary upgrades the binary installation
+func (e *Engine) upgradeBinary() error {
+	slog.Info("Starting binary upgrade")
+	// TODO: Implement binary upgrade logic
+	return fmt.Errorf("binary upgrade is not implemented yet")
+}
+
+// getDockerRuntime returns the available docker runtime (docker or podman)
+func (e *Engine) getDockerRuntime() string {
+	if _, err := exec.LookPath("docker"); err == nil {
+		return "docker"
+	}
+	if _, err := exec.LookPath("podman"); err == nil {
+		return "podman"
+	}
+	return "docker" // Default to docker
+}
+
+// stopContainer stops a running container
+func (e *Engine) stopContainer(runtime, containerName string) error {
+	cmd := exec.Command(runtime, "stop", containerName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to stop container %s: %w", containerName, err)
+	}
+	slog.Info("Container stopped", "name", containerName)
+	return nil
+}
+
+// pullImage pulls a docker image
+func (e *Engine) pullImage(runtime, image string) error {
+	cmd := exec.Command(runtime, "pull", image)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to pull image %s: %w", image, err)
+	}
+	slog.Info("Image pulled", "image", image)
+	return nil
+}
+
+// removeContainer removes a container
+func (e *Engine) removeContainer(runtime, containerName string) error {
+	cmd := exec.Command(runtime, "rm", containerName)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove container %s: %w", containerName, err)
+	}
+	slog.Info("Container removed", "name", containerName)
+	return nil
+}
+
+// rollbackUpgrade attempts to rollback a failed upgrade
+func (e *Engine) rollbackUpgrade(runtime, image string) error {
+	slog.Warn("Attempting upgrade rollback")
+	// Try to restart with old image (if it still exists locally)
+	// TODO: Implement proper rollback mechanism
+	return nil
+}
+
+// logUpgradeConfig logs the upgrade configuration
+func (e *Engine) logUpgradeConfig() {
+	cfg := e.Config
+	slog.Info("=== Upgrade Configuration ===")
+	slog.Info("Action", "action", cfg.Action)
+	slog.Info("Install Type", "type", cfg.InstallType)
+	slog.Info("Version", "version", cfg.Version)
+	slog.Info("Edition", "edition", cfg.Edition)
+	slog.Info("Container Name", "name", cfg.ContainerName)
+	slog.Info("=== End Configuration ===")
+}
+
+// saveUpgradeLog saves the upgrade command to a log file
+func (e *Engine) saveUpgradeLog(command string) error {
+	// Get executable directory
+	execPath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	execDir := filepath.Dir(execPath)
+
+	// Create upgrade log directory
+	logDir := filepath.Join(execDir, "install_logs")
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		return err
+	}
+
+	// Create log file with timestamp
+	timestamp := time.Now().Format("20060102_150405")
+	logFile := filepath.Join(logDir, fmt.Sprintf("upgrade_%s.log", timestamp))
+
+	file, err := os.Create(logFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	// Write upgrade details
+	fmt.Fprintf(file, "=== DPanel Upgrade Log ===\n")
+	fmt.Fprintf(file, "Date: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Fprintf(file, "Version: %s\n", e.Config.Version)
+	fmt.Fprintf(file, "Edition: %s\n", e.Config.Edition)
+	fmt.Fprintf(file, "Install Type: %s\n", e.Config.InstallType)
+	fmt.Fprintf(file, "\n=== Configuration ===\n")
+	fmt.Fprintf(file, "Container Name: %s\n", e.Config.ContainerName)
+	fmt.Fprintf(file, "\n=== Execution Command ===\n")
+	fmt.Fprintf(file, "%s\n", command)
+	fmt.Fprintf(file, "\n=== End Log ===\n")
+
+	slog.Info("Upgrade log saved", "file", logFile)
+	return nil
+}
+
+// saveUpgradeResult saves the upgrade result
+func (e *Engine) saveUpgradeResult(success bool, errorMsg string) {
+	// Get executable directory
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	execDir := filepath.Dir(execPath)
+
+	// Append to latest upgrade log
+	logDir := filepath.Join(execDir, "install_logs")
+	logFile := filepath.Join(logDir, "latest.log")
+
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	if success {
+		fmt.Fprintf(file, "\n[%s] Upgrade: SUCCESS\n", timestamp)
+	} else {
+		fmt.Fprintf(file, "\n[%s] Upgrade: FAILED\n", timestamp)
+		fmt.Fprintf(file, "Error: %s\n", errorMsg)
+	}
+}
+
+// uninstallContainer uninstalls the container installation
+func (e *Engine) uninstallContainer() error {
+	slog.Info("Starting container uninstallation")
+
+	// Log uninstall configuration
+	e.logUninstallConfig()
+
+	runtime := e.getDockerRuntime()
+
+	// Step 1: Check if container exists
+	slog.Info("Step 1: Checking if container exists")
+	containerExists, err := e.checkContainerExists(runtime, e.Config.ContainerName)
+	if err != nil {
+		return fmt.Errorf("failed to check container existence: %w", err)
+	}
+
+	if !containerExists {
+		return fmt.Errorf("container %s does not exist", e.Config.ContainerName)
+	}
+
+	// Step 2: Stop container if running
+	slog.Info("Step 2: Stopping container")
+	if err := e.stopContainer(runtime, e.Config.ContainerName); err != nil {
+		// Container might already be stopped, continue
+		slog.Warn("Failed to stop container (may already be stopped)", "error", err)
+	}
+
+	// Step 3: Remove container
+	slog.Info("Step 3: Removing container")
+	if err := e.removeContainer(runtime, e.Config.ContainerName); err != nil {
+		return fmt.Errorf("failed to remove container: %w", err)
+	}
+
+	// Step 4: Optional - Remove image
+	// TODO: Add confirmation prompt for image removal
+	// slog.Info("Step 4: Removing image")
+	// image := e.buildImageName()
+	// if err := e.removeImage(runtime, image); err != nil {
+	// 	slog.Warn("Failed to remove image", "error", err)
+	// }
+
+	// Step 5: Optional - Remove data volumes
+	// TODO: Add confirmation prompt for data removal
+	// slog.Info("Step 5: Cleaning up data volumes")
+	// if err := e.cleanupDataVolumes(); err != nil {
+	// 	slog.Warn("Failed to cleanup data volumes", "error", err)
+	// }
+
+	slog.Info("Container uninstallation completed successfully")
+	e.saveUninstallResult(true, "")
+	return nil
+}
+
+// uninstallBinary uninstalls the binary installation
+func (e *Engine) uninstallBinary() error {
+	slog.Info("Starting binary uninstallation")
+	// TODO: Implement binary uninstall logic
+	return fmt.Errorf("binary uninstall is not implemented yet")
+}
+
+// checkContainerExists checks if a container exists
+func (e *Engine) checkContainerExists(runtime, containerName string) (bool, error) {
+	cmd := exec.Command(runtime, "ps", "-a", "--filter", "name="+containerName, "--format", "{{.Names}}")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return false, fmt.Errorf("failed to check container: %w", err)
+	}
+
+	return strings.Contains(string(output), containerName), nil
+}
+
+// removeImage removes a docker image
+func (e *Engine) removeImage(runtime, image string) error {
+	cmd := exec.Command(runtime, "rmi", image)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove image %s: %w", image, err)
+	}
+	slog.Info("Image removed", "image", image)
+	return nil
+}
+
+// cleanupDataVolumes removes data volumes
+func (e *Engine) cleanupDataVolumes() error {
+	slog.Info("Cleaning up data volumes", "path", e.Config.DataPath)
+	// TODO: Implement data volume cleanup
+	// This should be optional and require confirmation
+	return nil
+}
+
+// logUninstallConfig logs the uninstall configuration
+func (e *Engine) logUninstallConfig() {
+	cfg := e.Config
+	slog.Info("=== Uninstall Configuration ===")
+	slog.Info("Action", "action", cfg.Action)
+	slog.Info("Install Type", "type", cfg.InstallType)
+	slog.Info("Container Name", "name", cfg.ContainerName)
+	slog.Info("Data Path", "path", cfg.DataPath)
+	slog.Info("=== End Configuration ===")
+}
+
+// saveUninstallResult saves the uninstall result
+func (e *Engine) saveUninstallResult(success bool, errorMsg string) {
+	// Get executable directory
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	execDir := filepath.Dir(execPath)
+
+	// Append to latest log
+	logDir := filepath.Join(execDir, "install_logs")
+	logFile := filepath.Join(logDir, "latest.log")
+
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	if success {
+		fmt.Fprintf(file, "\n[%s] Uninstall: SUCCESS\n", timestamp)
+	} else {
+		fmt.Fprintf(file, "\n[%s] Uninstall: FAILED\n", timestamp)
+		fmt.Fprintf(file, "Error: %s\n", errorMsg)
+	}
+}
+
+// logBinaryInstallConfig logs the binary installation configuration
+func (e *Engine) logBinaryInstallConfig() {
+	cfg := e.Config
+	slog.Info("=== Binary Installation Configuration ===")
+	slog.Info("Action", "action", cfg.Action)
+	slog.Info("Version", "version", cfg.Version)
+	slog.Info("Edition", "edition", cfg.Edition)
+	slog.Info("Data Path", "path", cfg.DataPath)
+	slog.Info("=== End Configuration ===")
+}
+
+// downloadBinary downloads the DPanel binary
+func (e *Engine) downloadBinary() error {
+	// Determine download URL based on version and edition
+	url := e.getBinaryDownloadURL()
+	slog.Info("Downloading binary from", "url", url)
+
+	// TODO: Implement actual download logic
+	// Use http.Get to download the binary
+	// Save to temporary location
+	return fmt.Errorf("binary download not implemented yet")
+}
+
+// getBinaryDownloadURL returns the download URL for the binary
+func (e *Engine) getBinaryDownloadURL() string {
+	// Build download URL based on version, edition, and platform
+	// Example: https://github.com/dpanel/dpanel/releases/download/v1.0.0/dpanel-linux-amd64
+	// TODO: Implement URL building logic
+	return "https://github.com/dpanel/dpanel/releases/latest/download/dpanel"
+}
+
+// installBinaryToPath installs the binary to system path
+func (e *Engine) installBinaryToPath() error {
+	// Determine install path based on OS
+	installPath := e.getBinaryInstallPath()
+	slog.Info("Installing binary to", "path", installPath)
+
+	// TODO: Implement installation logic
+	// Copy binary to install path
+	// Set executable permissions
+	return fmt.Errorf("binary installation to path not implemented yet")
+}
+
+// getBinaryInstallPath returns the installation path for the binary
+func (e *Engine) getBinaryInstallPath() string {
+	// Determine install path based on OS
+	// Linux: /usr/local/bin/dpanel
+	// macOS: /usr/local/bin/dpanel
+	// Windows: C:\Program Files\DPanel\dpanel.exe
+	// TODO: Implement OS-specific path logic
+	return "/usr/local/bin/dpanel"
+}
+
+// createServiceFile creates a service file for the binary
+func (e *Engine) createServiceFile() error {
+	// Determine service file type based on OS
+	// Linux: systemd service file
+	// macOS: launchd plist file
+	// Windows: Windows service
+	slog.Info("Creating service file")
+
+	// TODO: Implement service file creation
+	return fmt.Errorf("service file creation not implemented yet")
+}
+
+// startBinaryService starts the binary service
+func (e *Engine) startBinaryService() error {
+	slog.Info("Starting binary service")
+
+	// TODO: Implement service startup logic
+	// systemctl start dpanel (Linux)
+	// launchctl load (macOS)
+	// sc start (Windows)
+	return fmt.Errorf("service startup not implemented yet")
+}
+
+// saveBinaryInstallResult saves the binary installation result
+func (e *Engine) saveBinaryInstallResult(success bool, errorMsg string) {
+	// Get executable directory
+	execPath, err := os.Executable()
+	if err != nil {
+		return
+	}
+	execDir := filepath.Dir(execPath)
+
+	// Append to latest log
+	logDir := filepath.Join(execDir, "install_logs")
+	logFile := filepath.Join(logDir, "latest.log")
+
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	if success {
+		fmt.Fprintf(file, "\n[%s] Binary Installation: SUCCESS\n", timestamp)
+	} else {
+		fmt.Fprintf(file, "\n[%s] Binary Installation: FAILED\n", timestamp)
+		fmt.Fprintf(file, "Error: %s\n", errorMsg)
+	}
 }

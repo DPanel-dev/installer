@@ -368,11 +368,13 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			m.step = StepEnvironmentCheck
 			m.runEnvironmentCheck()
 		} else if m.config.Action == "upgrade" {
-			m.error = fmt.Errorf("%s", i18n.T("upgrade_not_implemented"))
-			m.step = StepError
+			// For upgrade, skip to environment check
+			m.step = StepEnvironmentCheck
+			m.runEnvironmentCheck()
 		} else if m.config.Action == "uninstall" {
-			m.error = fmt.Errorf("%s", i18n.T("uninstall_not_implemented"))
-			m.step = StepError
+			// For uninstall, skip to environment check
+			m.step = StepEnvironmentCheck
+			m.runEnvironmentCheck()
 		}
 
 	case StepEnvironmentCheck:
@@ -380,8 +382,26 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 			m.step = StepInstallDocker
 			m.setupInstallDockerChoices()
 		} else {
-			m.step = StepInstallType
-			m.setupInstallTypeChoices()
+			// Based on action, decide next step
+			if m.config.Action == "install" {
+				m.step = StepInstallType
+				m.setupInstallTypeChoices()
+			} else if m.config.Action == "upgrade" || m.config.Action == "uninstall" {
+				// For upgrade and uninstall, skip to confirm step
+				m.config.InstallType = "container" // Default to container
+				m.config.Version = "community"     // Use default
+				m.config.Edition = "standard"      // Use default
+				m.config.OS = "alpine"             // Use default
+				m.config.ImageRegistry = "hub"     // Use default
+				m.config.ContainerName = "dpanel"  // Use default
+				m.config.Port = 8080               // Use default
+				m.config.DataPath = "/home/dpanel" // Use default
+				m.config.DockerConnection = &install.DockerConnection{
+					Type:     "local",
+					SockPath: "/var/run/docker.sock",
+				}
+				m.step = StepConfirm
+			}
 		}
 
 	case StepInstallDocker:
