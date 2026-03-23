@@ -1276,3 +1276,150 @@ podman ps
 
 ### 手动执行生成的命令
 从安装日志中复制最终的 docker run 命令，手动执行测试。
+
+## Git 提交规范（⚠️ 严格遵守）
+
+本项目遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范，使用统一的提交消息格式。
+
+### 提交消息格式
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### 提交类型 (type)
+
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| `fix` | Bug 修复 | `fix(tui):修复语言切换后界面不更新的问题` |
+| `feat` | 新功能 | `feat(tui):添加终端窗口自适应宽度支持` |
+| `refactor` | 代码重构（不改变功能） | `refactor(tui):统一消息提示样式和间距规则` |
+| `docs` | 文档更新 | `docs(claudemd):添加 TUI 布局规范说明` |
+| `style` | 代码风格调整（不影响逻辑） | `style(tui):调整变量命名提高可读性` |
+| `perf` | 性能优化 | `perf(engine):优化 Docker 命令构建性能` |
+| `test` | 测试相关 | `test(engine):添加环境检测单元测试` |
+| `chore` | 构建/工具/依赖相关 | `chore(deps):升级 bubbletea 到最新版本` |
+| `ci` | CI/CD 配置 | `ci(github):添加自动化测试工作流` |
+
+### 提交范围 (scope)
+
+常用范围：
+- `tui`: TUI 界面相关 (`internal/ui/tui/`)
+- `engine`: 安装引擎相关 (`internal/install/`)
+- `config`: 配置相关 (`internal/install/config.go`)
+- `cli`: CLI 命令相关 (`main.go`)
+- `i18n`: 国际化相关 (`pkg/i18n/`)
+- `claudemd`: 项目文档 (`CLAUDE.md`)
+
+### 提交说明 (subject)
+
+- 使用中文描述（与项目文档语言一致）
+- 简洁明了，不超过 50 字符
+- 不以句号结尾
+- 使用祈使句（如"添加"而非"添加了"）
+
+### 提交正文 (body)（可选）
+
+- 详细说明本次提交的内容
+- 列出主要的修改点
+- 可以分多条说明，使用列表格式
+
+### 提交脚注 (footer)（可选）
+
+- 关联 Issue：`Closes #123`
+- 破坏性变更：`BREAKING CHANGE: API 变更说明`
+- 协作者：`Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>`
+
+### 示例提交消息
+
+#### 简单 Bug 修复
+```bash
+git commit -m "fix(tui):修复禁用选项仍可被选中的问题"
+```
+
+#### 复杂功能添加
+```bash
+git commit -m "feat(tui):添加响应式宽度支持
+
+- 标题、警告框自动换行适应窄窗口
+- 最小宽度 40 字符保证可读性
+- 使用 getResponsiveWidth() 辅助函数
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+#### 重构提交
+```bash
+git commit -m "refactor(tui):统一布局、间距和消息样式
+
+本次提交基于布局规范和用户反馈实现全面的 TUI 改进。
+
+Bug Fixes:
+- 修复语言切换后界面不更新
+- 修复版本选择中禁用选项仍可被选中
+- 修复所有步骤顶部间距不一致
+- 修复 logo 字符串导致过多垂直间距
+
+Features:
+- 添加终端窗口自适应宽度支持
+- 添加二进制安装限制：标准版禁用
+- 二进制安装时显示警告框
+
+Refactoring:
+- 统一消息提示样式（error、warning、info、success）
+- 统一所有 TUI 步骤的间距规则
+- 清理重复的翻译键
+- 移除描述中的内联禁用提示
+
+Documentation:
+- 添加"TUI 布局规范（⚠️ 严格遵守）"章节
+- 添加"消息提示样式规范（⚠️ 严格遵守）"章节
+- 添加"间距规范（⚠️ 严格遵守）"章节
+- 添加开发原则："优先使用现有的方法和逻辑"
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+```
+
+#### 文档更新
+```bash
+git commit -m "docs(claudemd):添加 Git 提交规范章节
+
+- 说明 Conventional Commits 格式
+- 定义提交类型和范围
+- 提供多个提交消息示例"
+```
+
+### 提交前检查清单
+
+- [ ] 提交类型是否正确？
+- [ ] 提交范围是否合适？
+- [ ] 标题是否简洁明了（不超过 50 字符）？
+- [ ] 是否使用了中文描述？
+- [ ] 是否需要详细的正文说明？
+- [ ] 是否需要添加 Co-Authored-By？
+- [ ] 是否关联了相关 Issue？
+
+### Git 工作流建议
+
+1. **频繁提交**：每个小的功能点或修复都应该单独提交
+2. **逻辑分组**：相关修改放在同一提交中，无关修改分开提交
+3. **可回滚**：每个提交应该是可独立回滚的
+4. **清晰的原子性**：一个提交只做一件事，不要混杂多个不同的修改
+5. **测试后再提交**：确保代码能正常工作后再提交
+
+### 查看提交历史
+
+```bash
+# 查看最近 10 条提交
+git log --oneline -10
+
+# 查看详细提交信息
+git show <commit-hash>
+
+# 查看某次提交的文件变更
+git show --stat <commit-hash>
+```
