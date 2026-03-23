@@ -17,25 +17,35 @@
   "permission_denied": "Permission denied",
   "registry_check": "Checking registry connectivity...",
 
+  "container_available_prompt": "You can choose to install via container or binary.",
+  "docker_not_found_desktop": "Docker Desktop is not installed on your system.",
+  "docker_not_found_linux": "Docker is not installed. You can install it automatically or use binary installation.",
+  "docker_not_found_with_os": "You are currently using %s system. Docker Desktop is not installed. Please install Docker manually or use binary installation.",
+  "docker_not_found_linux_with_os": "You are currently using %s system. Docker is not installed. You can install it automatically or use binary installation.",
+
   "install_docker": "Install Docker",
   "install_docker_desc": "Install Docker/Podman automatically (Linux only)",
+  "install_docker_linux_desc": "Install Docker automatically using the official script",
   "skip_docker_install": "Skip Docker Installation",
   "skip_docker_install_desc": "Skip and use binary installation instead",
-  "install_docker_prompt": "Docker is not installed. Do you want to install Docker now?",
+  "container_install_disabled": "(Docker not available - requires manual installation)",
+  "binary_only_notice": "Binary installation only (Docker/Podman not available)",
+  "install_docker_prompt": "Docker is not installed. Do you want to install Docker manually?",
   "manual_docker_prompt": "Please install Docker Desktop manually and restart the installer.",
+  "docker_install_linux_prompt": "You can choose to install Docker automatically or use binary installation.",
 
   "install_method": "Installation Method",
   "container_install": "Container Installation",
   "container_install_desc": "Run DPanel in a Docker/Podman container",
   "binary_install": "Binary Installation",
   "binary_install_desc": "Install DPanel as a standalone binary",
-  "binary_only_notice": "Binary installation only (Docker/Podman not available)",
+  "binary_install_edition_warning": "Binary installation only supports Lite Edition.\n\nStandard Edition requires Nginx and SSL certificate support, which is only available in container installation.",
 
   "select_version": "Select Version",
   "community_edition": "Community Edition",
   "community_edition_desc": "Free and open source version",
   "professional_edition": "Professional Edition",
-  "professional_edition_desc": "Advanced features for production (https://dpanel.io/pricing)",
+  "professional_edition_desc": "Advanced features for production (https://dpanel.cc/pro)",
   "development_edition": "Development Edition",
   "development_edition_desc": "Latest features, may be unstable",
 
@@ -131,10 +141,10 @@
 
   "docker_choice_linux": "You can choose to install Docker automatically or use binary installation.",
   "docker_install_manual": "Please install Docker Desktop manually:",
-  "docker_continue_binary": "Or continue with binary installation.",
-  "docker_download_windows": "https://desktop.docker.com/win/main/amd64/Docker%20Desktop%20Installer.exe",
-  "docker_download_macos": "https://desktop.docker.com/mac/main/amd64/Docker.dmg",
+  "docker_download_url": "https://www.docker.com/products/docker-desktop/",
+  "restart_after_docker_install": "After installing Docker, please run the installer again.",
 
-  "help_navigation": "↑/↓ Navigate | Enter Select | q Quit",
-  "help_navigation_with_back": "↑/↓ Navigate | Enter Select | Esc/Backspace Back | q Quit"
+  "help_navigation": "↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit",
+  "help_navigation_with_back": "↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit",
+  "help_input": "Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit"
 }

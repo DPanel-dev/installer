@@ -18,21 +18,22 @@ type Translator struct {
 
 var (
 	defaultTranslator *Translator
-	once              sync.Once
+	mu                sync.RWMutex
 )
 
 // Init initializes the global translator with the specified language
+// Can be called multiple times to change language
 func Init(lang string) error {
-	var initErr error
-	once.Do(func() {
-		t, err := NewTranslator(lang)
-		if err != nil {
-			initErr = err
-			return
-		}
-		defaultTranslator = t
-	})
-	return initErr
+	t, err := NewTranslator(lang)
+	if err != nil {
+		return err
+	}
+
+	mu.Lock()
+	defaultTranslator = t
+	mu.Unlock()
+
+	return nil
 }
 
 // NewTranslator creates a new translator for the specified language

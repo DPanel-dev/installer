@@ -19,9 +19,7 @@ type Step int
 const (
 	StepLanguage Step = iota
 	StepAction
-	StepEnvironmentCheck
-	StepInstallDocker
-	StepInstallType
+	StepInstallType // Merged environment check with install type selection
 	StepVersion
 	StepEdition
 	StepOS
@@ -41,24 +39,49 @@ const (
 	StepError
 )
 
-// Claude Code / VS Code Dark theme colors
+// stepNames maps each step to its display name
+var stepNames = map[Step]string{
+	StepLanguage:         "select_language",
+	StepAction:           "select_action",
+	StepInstallType:      "install_method",
+	StepVersion:          "select_version",
+	StepEdition:          "select_edition",
+	StepOS:               "select_os",
+	StepRegistry:         "select_registry",
+	StepDockerConnection: "docker_connection",
+	StepDockerConfig:     "docker_host",
+	StepTLSConfig:        "tls_path",
+	StepSSHConfig:        "ssh_user",
+	StepContainerName:    "container_name",
+	StepPort:             "access_port",
+	StepDataPath:         "data_path",
+	StepProxy:            "proxy_address",
+	StepDNS:              "dns_address",
+	StepConfirm:          "confirm_install",
+	StepInstalling:       "installing",
+}
+
+// DPanel / Modern DevOps theme colors
 var (
-	primaryColor = lipgloss.Color("#007ACC") // VS Code blue
-	successColor = lipgloss.Color("#4EC9B0") // VS Code teal
-	errorColor   = lipgloss.Color("#F14C4C") // VS Code red
-	warningColor = lipgloss.Color("#CE9178") // VS Code orange
-	mutedColor   = lipgloss.Color("#858585") // VS Code gray
+	primaryColor = lipgloss.Color("#1890FF") // DPanel blue
+	successColor = lipgloss.Color("#52C41A") // Success green
+	errorColor   = lipgloss.Color("#FF4D4F") // Error red
+	warningColor = lipgloss.Color("#FAAD14") // Warning amber
+	infoColor    = lipgloss.Color("#1890FF") // Info blue
 
-	bgColor         = lipgloss.Color("#1E1E1E") // VS Code background
-	bgLightColor    = lipgloss.Color("#252526") // VS Code sidebar
-	bgSelectedColor = lipgloss.Color("#094771") // VS Code selection
-	bgInputColor    = lipgloss.Color("#3C3C3C") // VS Code input background
+	mutedColor   = lipgloss.Color("#8C8C8C") // Muted gray
+	lightColor   = lipgloss.Color("#BFBFBF") // Light gray
 
-	textColor        = lipgloss.Color("#D4D4D4") // VS Code foreground
-	textMutedColor   = lipgloss.Color("#858585") // VS Code comment
-	textAccentColor  = lipgloss.Color("#4FC1FF") // VS Code bright blue
-	textKeywordColor = lipgloss.Color("#569CD6") // VS Code keyword
-	textStringColor  = lipgloss.Color("#CE9178") // VS Code string
+	bgColor         = lipgloss.Color("#141414") // Dark background
+	bgLightColor    = lipgloss.Color("#1F1F1F") // Lighter background
+	bgSelectedColor = lipgloss.Color("#0050B3") // Selected blue
+	bgInputColor    = lipgloss.Color("#2A2A2A") // Input background
+	bgHintColor     = lipgloss.Color("#2A2A2A") // Hint box background
+
+	textColor        = lipgloss.Color("#E8E8E8") // Primary text
+	textMutedColor   = lipgloss.Color("#8C8C8C") // Muted text
+	textAccentColor  = lipgloss.Color("#40A9FF") // Accent blue
+	textKeywordColor = lipgloss.Color("#1890FF") // Keyword blue
 )
 
 // Compact styles
@@ -66,12 +89,12 @@ var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(primaryColor).
-			MarginBottom(0)
+			MarginBottom(1)
 
 	subtitleStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(textKeywordColor).
-			MarginBottom(0).
+			MarginBottom(1).
 			MarginTop(0)
 
 	menuItemStyle = lipgloss.NewStyle().
@@ -97,7 +120,7 @@ var (
 			Bold(true)
 
 	inputStyle = lipgloss.NewStyle().
-			Foreground(textStringColor).
+			Foreground(textColor).
 			Background(bgInputColor).
 			Padding(0, 1)
 
@@ -111,12 +134,89 @@ var (
 
 	helpStyle = lipgloss.NewStyle().
 			Foreground(mutedColor).
-			MarginTop(0)
+			MarginTop(3)
 
 	infoStyle = lipgloss.NewStyle().
-			Foreground(textMutedColor).
-			MarginBottom(0)
+			Foreground(infoColor).
+			Bold(true)
+
+	warningStyle = lipgloss.NewStyle().
+			Foreground(warningColor).
+			Bold(true).
+			MarginTop(1).
+			MarginBottom(1)
+
+	// Message box styles for important prompts
+	infoBoxStyle = lipgloss.NewStyle().
+			Foreground(infoColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			MarginBottom(1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(infoColor)
+
+	warningBoxStyle = lipgloss.NewStyle().
+			Foreground(warningColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			MarginBottom(1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(warningColor)
+
+	errorBoxStyle = lipgloss.NewStyle().
+			Foreground(errorColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			MarginBottom(1).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(errorColor)
+
+	// Alias for backward compatibility
+	hintBoxStyle = warningBoxStyle
+
+	separatorStyle = lipgloss.NewStyle().
+			Foreground(mutedColor).
+			MarginTop(1).
+			MarginBottom(1)
+
+	// Disabled style for unavailable options
+	menuItemDisabledStyle = lipgloss.NewStyle().
+			Foreground(mutedColor).
+			PaddingLeft(2).
+			MarginBottom(0).
+			Italic(true)
+
+	menuItemSelectedDisabledStyle = lipgloss.NewStyle().
+			Foreground(mutedColor).
+			Background(bgInputColor).
+			PaddingLeft(2).
+			PaddingRight(1).
+			MarginBottom(0).
+			Italic(true)
 )
+
+// Helper methods for responsive styling
+func (m model) getResponsiveStyle(maxWidth int) lipgloss.Style {
+	width := m.width
+	if width > maxWidth {
+		width = maxWidth
+	}
+	if width < 40 {
+		width = 40 // Minimum width
+	}
+	return lipgloss.NewStyle().Width(width)
+}
+
+func (m model) getResponsiveWidth(maxWidth int) int {
+	width := m.width
+	if width > maxWidth {
+		return maxWidth
+	}
+	if width < 40 {
+		return 40 // Minimum width
+	}
+	return width
+}
 
 // Model represents the TUI state
 type model struct {
@@ -125,6 +225,7 @@ type model struct {
 	cursor          int
 	choices         []string
 	descriptions    []string
+	disabled        []bool // Track which choices are disabled
 	inputValue      string
 	width           int
 	height          int
@@ -133,6 +234,7 @@ type model struct {
 	envCheck        *EnvironmentCheck
 	dockerInstalled bool
 	osType          string // "windows", "darwin", "linux"
+	manualDockerInstall bool // User chose to install Docker manually
 }
 
 // EnvironmentCheck holds environment check results
@@ -153,6 +255,8 @@ func InitialModel() model {
 		width:  80,
 		height: 24,
 	}
+	// Initialize i18n system with default language from config
+	_ = i18n.Init(cfg.Language)
 	m.setupLanguageChoices()
 	return m
 }
@@ -177,10 +281,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				// Skip disabled options
+				for m.cursor > 0 && len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+					m.cursor--
+				}
 			}
 		case "down", "j":
 			if m.cursor < len(m.choices)-1 {
 				m.cursor++
+				// Skip disabled options
+				for m.cursor < len(m.choices)-1 && len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+					m.cursor++
+				}
 			}
 		case "enter":
 			return m.handleEnter()
@@ -224,10 +336,25 @@ func (m model) View() string {
 
 	// Title with step indicator
 	if m.step == StepLanguage {
-		content.WriteString(titleStyle.Render(i18n.T("select_language") + " / Select Language"))
+		titleText := i18n.T("select_language") + " / Select Language"
+		titleWidth := m.getResponsiveWidth(80)
+		titleStyleWithWidth := titleStyle.Copy().Width(titleWidth)
+		content.WriteString(titleStyleWithWidth.Render(titleText))
 		content.WriteString("\n")
 	} else {
-		content.WriteString(titleStyle.Render(i18n.Tf("title_with_step", m.step, StepError)))
+		// Get step name
+		stepName := "unknown"
+		if name, ok := stepNames[m.step]; ok {
+			stepName = i18n.T(name)
+		}
+		titleText := fmt.Sprintf("🚀 %s - %s (%d/%d)",
+			i18n.T("title"),
+			stepName,
+			m.step,
+			StepError-1)
+		titleWidth := m.getResponsiveWidth(80)
+		titleStyleWithWidth := titleStyle.Copy().Width(titleWidth)
+		content.WriteString(titleStyleWithWidth.Render(titleText))
 		content.WriteString("\n")
 	}
 
@@ -237,76 +364,67 @@ func (m model) View() string {
 	// Render current step content
 	switch m.step {
 	case StepLanguage:
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepAction:
-		content.WriteString(subtitleStyle.Render(i18n.T("select_action")))
-		content.WriteString("\n\n")
-		content.WriteString(m.renderMenu())
-
-	case StepEnvironmentCheck:
-		content.WriteString(subtitleStyle.Render(i18n.T("environment_check")))
-		content.WriteString("\n\n")
-		content.WriteString(m.renderEnvironmentCheck())
-
-	case StepInstallDocker:
-		content.WriteString(subtitleStyle.Render(i18n.T("install_docker")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepInstallType:
-		content.WriteString(subtitleStyle.Render(i18n.T("install_method")))
-		content.WriteString("\n\n")
-		content.WriteString(m.renderMenu())
+		content.WriteString("\n")
+		content.WriteString(m.renderInstallType())
 
 	case StepVersion:
-		content.WriteString(subtitleStyle.Render(i18n.T("select_version")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepEdition:
-		content.WriteString(subtitleStyle.Render(i18n.T("select_edition")))
-		content.WriteString("\n\n")
-		content.WriteString(m.renderMenu())
+		content.WriteString("\n")
+		content.WriteString(m.renderEdition())
 
 	case StepOS:
-		content.WriteString(subtitleStyle.Render(i18n.T("select_os")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepRegistry:
-		content.WriteString(subtitleStyle.Render(i18n.T("select_registry")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepDockerConnection:
-		content.WriteString(subtitleStyle.Render(i18n.T("docker_connection")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderMenu())
 
 	case StepDockerConfig, StepTLSConfig, StepSSHConfig,
 		StepContainerName, StepPort, StepDataPath, StepProxy, StepDNS:
-		content.WriteString(subtitleStyle.Render(m.getStepTitle()))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderInput())
 
 	case StepConfirm:
-		content.WriteString(subtitleStyle.Render(i18n.T("confirm_install")))
-		content.WriteString("\n\n")
+		content.WriteString("\n")
 		content.WriteString(m.renderConfirm())
 
 	case StepInstalling:
-		content.WriteString(subtitleStyle.Render(i18n.T("installing")))
-		content.WriteString("\n\n")
-		content.WriteString(infoStyle.Render(i18n.T("please_wait")))
+		content.WriteString("\n")
+		content.WriteString(infoStyle.Render("⏳ " + i18n.T("please_wait")))
 		content.WriteString("\n")
 
 	case StepComplete:
-		content.WriteString(successStyle.Render(i18n.T("installation_complete")))
 		content.WriteString("\n")
+		if m.manualDockerInstall {
+			content.WriteString(infoStyle.Render("ℹ️  " + i18n.T("docker_install_manual")))
+			content.WriteString("\n\n")
+			content.WriteString(hintBoxStyle.Render(i18n.T("docker_download_url")))
+			content.WriteString("\n\n")
+			content.WriteString(infoStyle.Render("ℹ️  " + i18n.T("restart_after_docker_install")))
+		} else {
+			content.WriteString(successStyle.Render("✓ " + i18n.T("installation_complete")))
+			content.WriteString("\n")
+		}
 
 	case StepError:
-		content.WriteString(errorStyle.Render(i18n.T("installation_failed")))
+		content.WriteString("\n")
+		content.WriteString(errorStyle.Render("✗ " + i18n.T("installation_failed")))
 		content.WriteString("\n\n")
 		if m.error != nil {
 			content.WriteString(m.error.Error())
@@ -321,7 +439,12 @@ func (m model) View() string {
 
 	// Help text (except for final steps)
 	if m.step != StepComplete && m.step != StepError {
-		content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
+		// For language selection step, use hardcoded text since i18n is not initialized yet
+		if m.step == StepLanguage {
+			content.WriteString(helpStyle.Render("↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit"))
+		} else {
+			content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
+		}
 	} else {
 		content.WriteString(helpStyle.Render(i18n.T("quit_prompt")))
 	}
@@ -344,7 +467,7 @@ func renderLogo() string {
 		"██║  ██║██████╔╝███████║██╔██╗ ██║█████╗  ██║     \n" +
 		"██║  ██║██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║     \n" +
 		"██████╔╝██║     ██║  ██║██║ ╚████║███████╗███████╗\n" +
-		"╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝\n\n\n\n\n"
+		"╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝\n"
 
 	return logoStyle.Render(logo)
 }
@@ -357,76 +480,52 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		if m.cursor == 1 {
 			lang = "zh"
 		}
-		m.config.Language = lang
-		_ = i18n.Init(lang)
+		// Only reinitialize if language actually changed
+		if m.config.Language != lang {
+			m.config.Language = lang
+			_ = i18n.Init(lang)
+			// Re-setup choices with new language
+			m.setupLanguageChoices()
+		}
 		m.step = StepAction
 		m.setupActionChoices()
 
 	case StepAction:
 		m.config.Action = m.getSelectedAction()
-		if m.config.Action == "install" {
-			m.step = StepEnvironmentCheck
-			m.runEnvironmentCheck()
-		} else if m.config.Action == "upgrade" {
-			// For upgrade, skip to environment check
-			m.step = StepEnvironmentCheck
-			m.runEnvironmentCheck()
-		} else if m.config.Action == "uninstall" {
-			// For uninstall, skip to environment check
-			m.step = StepEnvironmentCheck
-			m.runEnvironmentCheck()
+		m.step = StepInstallType
+		m.setupInstallTypeChoices()
+
+	case StepInstallType:
+		// Check if selected option is disabled
+		if len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+			// Option is disabled, do nothing
+			return m, nil
 		}
 
-	case StepEnvironmentCheck:
-		if !m.envCheck.DockerAvailable && !m.envCheck.PodmanAvailable {
-			m.step = StepInstallDocker
-			m.setupInstallDockerChoices()
-		} else {
-			// Based on action, decide next step
-			if m.config.Action == "install" {
-				m.step = StepInstallType
-				m.setupInstallTypeChoices()
-			} else if m.config.Action == "upgrade" || m.config.Action == "uninstall" {
-				// For upgrade and uninstall, skip to confirm step
-				m.config.InstallType = "container" // Default to container
-				m.config.Version = "community"     // Use default
-				m.config.Edition = "standard"      // Use default
-				m.config.OS = "alpine"             // Use default
-				m.config.ImageRegistry = "hub"     // Use default
-				m.config.ContainerName = "dpanel"  // Use default
-				m.config.Port = 8080               // Use default
-				m.config.DataPath = "/home/dpanel" // Use default
-				m.config.DockerConnection = &install.DockerConnection{
-					Type:     "local",
-					SockPath: "/var/run/docker.sock",
+		selection := m.getSelectedInstallType()
+		if selection == "install_docker" {
+			// User wants to install Docker (Linux only)
+			if m.osType == "linux" {
+				// Execute Docker installation script
+				if err := m.installDockerLinux(); err != nil {
+					m.error = err
+					m.step = StepError
+				} else {
+					// Re-check environment after installation
+					m.runEnvironmentCheck()
+					// Re-setup choices with updated environment
+					m.setupInstallTypeChoices()
 				}
-				m.step = StepConfirm
 			}
-		}
-
-	case StepInstallDocker:
-		if m.osType == "linux" {
-			// Linux: option 0 is install Docker, option 1 is skip
-			if m.cursor == 0 {
-				m.error = fmt.Errorf("automatic Docker installation is not implemented yet")
-				m.step = StepError
-			} else {
-				// Skip Docker installation, use binary
-				m.config.InstallType = "binary"
-				m.step = StepVersion
-				m.setupVersionChoices()
-			}
-		} else {
-			// Windows/macOS: only option is to skip (binary installation)
+		} else if selection == "binary" {
 			m.config.InstallType = "binary"
 			m.step = StepVersion
 			m.setupVersionChoices()
+		} else if selection == "container" {
+			m.config.InstallType = "container"
+			m.step = StepVersion
+			m.setupVersionChoices()
 		}
-
-	case StepInstallType:
-		m.config.InstallType = m.getSelectedInstallType()
-		m.step = StepVersion
-		m.setupVersionChoices()
 
 	case StepVersion:
 		m.config.Version = m.getSelectedVersion()
@@ -434,6 +533,12 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.setupEditionChoices()
 
 	case StepEdition:
+		// Check if selected option is disabled
+		if len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+			// Option is disabled, do nothing
+			return m, nil
+		}
+
 		m.config.Edition = m.getSelectedEdition()
 		// For binary installation, skip OS and registry selection
 		if m.config.InstallType == "binary" {
@@ -608,12 +713,6 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 	case StepAction:
 		m.step = StepLanguage
 		m.setupLanguageChoices()
-	case StepEnvironmentCheck:
-		m.step = StepAction
-		m.setupActionChoices()
-	case StepInstallDocker:
-		m.step = StepEnvironmentCheck
-		m.runEnvironmentCheck()
 	case StepInstallType:
 		m.step = StepAction
 		m.setupActionChoices()
@@ -694,6 +793,7 @@ func (m *model) setupLanguageChoices() {
 		"Use English as the display language",
 		"使用简体中文作为显示语言",
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupActionChoices() {
@@ -707,36 +807,18 @@ func (m *model) setupActionChoices() {
 		i18n.T("upgrade_panel_desc"),
 		i18n.T("uninstall_panel_desc"),
 	}
-}
-
-func (m *model) setupInstallDockerChoices() {
-	// Different options based on OS
-	if m.osType == "linux" {
-		// Linux: can auto-install Docker
-		m.choices = []string{
-			i18n.T("install_docker"),
-			i18n.T("skip_docker_install"),
-		}
-		m.descriptions = []string{
-			i18n.T("install_docker_desc"),
-			i18n.T("skip_docker_install_desc"),
-		}
-	} else {
-		// Windows/macOS: manual installation required
-		m.choices = []string{
-			i18n.T("skip_docker_install"),
-		}
-		m.descriptions = []string{
-			i18n.T("manual_docker_prompt"),
-		}
-	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupInstallTypeChoices() {
-	if !m.dockerInstalled {
-		m.choices = []string{i18n.T("binary_install")}
-		m.descriptions = []string{i18n.T("binary_only_notice")}
-	} else {
+	// Run environment check first
+	m.runEnvironmentCheck()
+
+	// Always show both options, but mark container as disabled if Docker not available
+	dockerAvailable := m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable
+
+	if dockerAvailable {
+		// Docker is available, show both options as enabled
 		m.choices = []string{
 			i18n.T("container_install"),
 			i18n.T("binary_install"),
@@ -744,6 +826,32 @@ func (m *model) setupInstallTypeChoices() {
 		m.descriptions = []string{
 			i18n.T("container_install_desc"),
 			i18n.T("binary_install_desc"),
+		}
+		m.disabled = []bool{false, false}
+	} else {
+		// Docker not available - show both options, but container is disabled
+		if m.osType == "linux" {
+			// Linux: show install docker option instead of container install
+			m.choices = []string{
+				i18n.T("install_docker"),
+				i18n.T("binary_install"),
+			}
+			m.descriptions = []string{
+				i18n.T("install_docker_linux_desc"),
+				i18n.T("binary_install_desc"),
+			}
+			m.disabled = []bool{false, false}
+		} else {
+			// Windows/macOS: show container install as disabled
+			m.choices = []string{
+				i18n.T("container_install"),
+				i18n.T("binary_install"),
+			}
+			m.descriptions = []string{
+				i18n.T("container_install_desc") + " " + i18n.T("container_install_disabled"),
+				i18n.T("binary_install_desc"),
+			}
+			m.disabled = []bool{true, false}
 		}
 	}
 }
@@ -759,6 +867,7 @@ func (m *model) setupVersionChoices() {
 		i18n.T("professional_edition_desc"),
 		i18n.T("development_edition_desc"),
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupEditionChoices() {
@@ -769,6 +878,13 @@ func (m *model) setupEditionChoices() {
 	m.descriptions = []string{
 		i18n.T("standard_edition_desc"),
 		i18n.T("lite_edition_desc"),
+	}
+
+	// Binary installation only supports Lite Edition
+	if m.config.InstallType == "binary" {
+		m.disabled = []bool{true, false} // Disable Standard Edition for binary installation
+	} else {
+		m.disabled = []bool{false, false}
 	}
 }
 
@@ -781,6 +897,7 @@ func (m *model) setupOSChoices() {
 		i18n.T("debian_desc"),
 		i18n.T("alpine_desc"),
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupRegistryChoices() {
@@ -792,6 +909,7 @@ func (m *model) setupRegistryChoices() {
 		i18n.T("docker_hub_desc"),
 		i18n.T("aliyun_desc"),
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupDockerConnectionChoices() {
@@ -805,6 +923,7 @@ func (m *model) setupDockerConnectionChoices() {
 		i18n.T("remote_tcp_desc"),
 		i18n.T("remote_ssh_desc"),
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupTLSChoices() {
@@ -813,6 +932,7 @@ func (m *model) setupTLSChoices() {
 		i18n.T("enable_tls_prompt"),
 		"",
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 func (m *model) setupConfirmChoices() {
@@ -824,6 +944,7 @@ func (m *model) setupConfirmChoices() {
 		i18n.T("confirm"),
 		i18n.T("cancel"),
 	}
+	m.disabled = make([]bool, len(m.choices))
 }
 
 // Selection helper methods
@@ -834,11 +955,27 @@ func (m model) getSelectedAction() string {
 }
 
 func (m model) getSelectedInstallType() string {
-	if !m.dockerInstalled {
+	// Map choices to internal values
+	// For Linux without Docker: ["install_docker", "binary_install"]
+	// For others without Docker: ["binary_install"]
+	// With Docker: ["container_install", "binary_install"]
+
+	choice := m.choices[m.cursor]
+
+	switch choice {
+	case i18n.T("install_docker"):
+		return "install_docker"
+	case i18n.T("container_install"):
+		return "container"
+	case i18n.T("binary_install"):
 		return "binary"
+	default:
+		// Fallback
+		if len(m.choices) == 1 {
+			return "binary"
+		}
+		return "container"
 	}
-	types := []string{"container", "binary"}
-	return types[m.cursor]
 }
 
 func (m model) getSelectedVersion() string {
@@ -871,14 +1008,26 @@ func (m model) getSelectedDockerConnection() string {
 func (m model) renderMenu() string {
 	var s strings.Builder
 	for i, choice := range m.choices {
-		if i == m.cursor {
+		// Check if this option is disabled
+		isDisabled := len(m.disabled) > i && m.disabled[i]
+		isSelected := i == m.cursor
+
+		if isDisabled && isSelected {
+			s.WriteString(menuItemSelectedDisabledStyle.Render(fmt.Sprintf("▸ %s", choice)))
+		} else if isDisabled {
+			s.WriteString(menuItemDisabledStyle.Render(fmt.Sprintf("  %s", choice)))
+		} else if isSelected {
 			s.WriteString(menuItemSelectedStyle.Render(fmt.Sprintf("▸ %s", choice)))
 		} else {
 			s.WriteString(menuItemStyle.Render(fmt.Sprintf("  %s", choice)))
 		}
 		s.WriteString("\n")
 		if i < len(m.descriptions) && m.descriptions[i] != "" {
-			s.WriteString(descriptionStyle.Render(m.descriptions[i]))
+			if isDisabled {
+				s.WriteString(descriptionStyle.Render(m.descriptions[i]))
+			} else {
+				s.WriteString(descriptionStyle.Render(m.descriptions[i]))
+			}
 			s.WriteString("\n")
 		}
 	}
@@ -890,78 +1039,15 @@ func (m model) renderInput() string {
 	s.WriteString(inputLabelStyle.Render(m.getStepTitle() + ":"))
 	s.WriteString("\n\n")
 	s.WriteString(inputStyle.Render(m.inputValue + "█"))
-	s.WriteString("\n")
-	s.WriteString(helpStyle.Render(i18n.T("press_enter")))
-	return s.String()
-}
-
-func (m model) renderEnvironmentCheck() string {
-	var s strings.Builder
-
-	// Show OS information
-	osName := ""
-	switch m.osType {
-	case "windows":
-		osName = "Windows"
-	case "darwin":
-		osName = "macOS"
-	case "linux":
-		osName = "Linux"
-	default:
-		osName = m.osType
-	}
-	s.WriteString(infoStyle.Render(i18n.T("os_label") + ": " + osName))
-	s.WriteString("\n")
-
-	if m.envCheck != nil {
-		if m.envCheck.DockerAvailable {
-			s.WriteString(successStyle.Render("✓ " + i18n.T("docker_detected")))
-			s.WriteString("\n")
-		} else if m.envCheck.PodmanAvailable {
-			s.WriteString(successStyle.Render("✓ " + i18n.T("podman_detected")))
-			s.WriteString("\n")
-		} else {
-			s.WriteString(errorStyle.Render("✗ " + i18n.T("docker_not_found")))
-			s.WriteString("\n")
-		}
-
-		if m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable {
-			if m.envCheck.HasPermission {
-				s.WriteString(successStyle.Render("✓ " + i18n.T("permission_ok")))
-			} else {
-				s.WriteString(errorStyle.Render("✗ " + i18n.T("permission_denied")))
-			}
-			s.WriteString("\n")
-		}
-
-		// Show guidance if no Docker available
-		if !m.envCheck.DockerAvailable && !m.envCheck.PodmanAvailable {
-			s.WriteString("\n")
-			if m.osType == "linux" {
-				s.WriteString(infoStyle.Render(i18n.T("docker_choice_linux")))
-			} else {
-				s.WriteString(infoStyle.Render(i18n.T("docker_install_manual")))
-				s.WriteString("\n")
-				if m.osType == "windows" {
-					s.WriteString(infoStyle.Render(i18n.T("docker_download_windows")))
-				} else if m.osType == "darwin" {
-					s.WriteString(infoStyle.Render(i18n.T("docker_download_macos")))
-				}
-				s.WriteString("\n")
-				s.WriteString(infoStyle.Render(i18n.T("docker_continue_binary")))
-			}
-		}
-	}
-
-	s.WriteString("\n")
-	s.WriteString(helpStyle.Render(i18n.T("press_enter")))
 	return s.String()
 }
 
 func (m model) renderConfirm() string {
 	var s strings.Builder
 
-	s.WriteString(subtitleStyle.Render(i18n.T("configuration_summary")))
+	subtitleWidth := m.getResponsiveWidth(80)
+	subtitleStyleWithWidth := subtitleStyle.Copy().Width(subtitleWidth)
+	s.WriteString(subtitleStyleWithWidth.Render(i18n.T("configuration_summary")))
 	s.WriteString("\n\n")
 
 	cfg := m.config
@@ -1039,4 +1125,86 @@ func (m *model) runEnvironmentCheck() {
 	}
 
 	m.dockerInstalled = m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable
+}
+
+// renderInstallType renders the install type selection with environment info
+func (m model) renderInstallType() string {
+	var s strings.Builder
+
+	// Get OS name for display
+	osName := ""
+	switch m.osType {
+	case "windows":
+		osName = "Windows"
+	case "darwin":
+		osName = "macOS"
+	case "linux":
+		osName = "Linux"
+	default:
+		osName = m.osType
+	}
+
+	// Show environment status and helpful info
+	if m.envCheck != nil {
+		if m.envCheck.DockerAvailable {
+			s.WriteString(successStyle.Render("✓ " + i18n.T("docker_detected")))
+			s.WriteString("\n\n")
+			s.WriteString(infoStyle.Render("ℹ️  " + i18n.T("container_available_prompt")))
+			s.WriteString("\n\n")
+		} else if m.envCheck.PodmanAvailable {
+			s.WriteString(successStyle.Render("✓ " + i18n.T("podman_detected")))
+			s.WriteString("\n\n")
+			s.WriteString(infoStyle.Render("ℹ️  " + i18n.T("container_available_prompt")))
+			s.WriteString("\n\n")
+		} else {
+			// Docker not available - show warning in hint box with OS info
+			if m.osType == "windows" || m.osType == "darwin" {
+				warningText := i18n.Tf("docker_not_found_with_os", osName) + "\n\n" +
+					i18n.T("docker_download_url")
+				boxWidth := m.getResponsiveWidth(76)
+				warningBoxWithWidth := warningBoxStyle.Copy().Width(boxWidth)
+				s.WriteString(warningBoxWithWidth.Render(warningText))
+				s.WriteString("\n")
+			} else if m.osType == "linux" {
+				warningText := i18n.Tf("docker_not_found_linux_with_os", osName)
+				boxWidth := m.getResponsiveWidth(76)
+				warningBoxWithWidth := warningBoxStyle.Copy().Width(boxWidth)
+				s.WriteString(warningBoxWithWidth.Render(warningText))
+				s.WriteString("\n")
+			}
+		}
+	}
+
+	// Show menu options
+	s.WriteString(m.renderMenu())
+
+	return s.String()
+}
+
+// renderEdition renders the edition selection with info about binary installation limitations
+func (m model) renderEdition() string {
+	var s strings.Builder
+
+	// Show warning for binary installation
+	if m.config.InstallType == "binary" {
+		warningText := i18n.T("binary_install_edition_warning")
+		boxWidth := m.getResponsiveWidth(76)
+		warningBoxWithWidth := warningBoxStyle.Copy().Width(boxWidth)
+		s.WriteString(warningBoxWithWidth.Render(warningText))
+		s.WriteString("\n")
+	}
+
+	// Show menu options
+	s.WriteString(m.renderMenu())
+
+	return s.String()
+}
+
+// renderInstallType renders the install type selection with environment info
+
+// installDockerLinux installs Docker on Linux using the official script
+func (m *model) installDockerLinux() error {
+	// Download and execute Docker's official install script
+	// This is a placeholder - actual implementation would download and run the script
+	return fmt.Errorf("docker installation script not implemented yet")
 }

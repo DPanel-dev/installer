@@ -64,14 +64,17 @@ go build -ldflags "-X main.version=1.0.0 -X main.commit=abc123 -X main.date=2025
 
 **`internal/ui/tui/tui.go`**：Bubble Tea TUI 实现
 - **全屏显示**：无边框，使用整个终端屏幕
-- **Claude Code / VS Code Dark 配色**：
-  - 主色：`#007ACC` (VS Code 蓝色)
-  - 背景：`#1E1E1E` (VS Code 背景)
-  - 选中：`#094771` (VS Code 选中色)
-  - 文本：`#D4D4D4` (VS Code 前景色)
+- **DPanel 配色方案**：
+  - 主色：`#1890FF` (DPanel 蓝色)
+  - 成功：`#52C41A` (成功绿色)
+  - 警告：`#FAAD14` (警告琥珀色)
+  - 错误：`#FF4D4F` (错误红色)
+  - 背景：`#141414` (深色背景)
+  - 选中：`#0050B3` (选中蓝色)
+  - 文本：`#E8E8E8` (主文本色)
 - **DPANEL Logo**：使用 Unicode 块字符构建的 ASCII 艺术字
   - 在语言选择页面显示
-  - 使用 VS Code 蓝色主题
+  - 使用 DPanel 蓝色主题
   - 正确拼写 "DPANEL" 六个字母
 - **Step 类型**：定义所有安装步骤
 - **model 结构体**：保存 TUI 状态
@@ -170,25 +173,630 @@ docker run -d --name dpanel --restart=on-failure:5 ...
 
 ## TUI 界面特点
 
+### TUI 布局规范（⚠️ 严格遵守）
+
+**TUI 界面从上到下分为5个区域，必须严格遵守此布局顺序**：
+
+```
+┌────────────────────────────────────┐
+│ 1. Logo区（始终显示）               │
+│    DPANEL ASCII艺术字               │
+├────────────────────────────────────┤
+│ 2. 标题区                          │
+│    🚀 DPanel 安装器 - 步骤名 (n/m)  │
+├────────────────────────────────────┤
+│ 3. 提示区（可选）                  │
+│    根据不同信息显示样式：           │
+│    - successStyle: 成功信息 ✓       │
+│    - warningColor/hintBoxStyle: 警告 ⚠️ │
+│    - errorStyle: 错误信息 ✗         │
+│    - infoStyle: 一般信息 ℹ          │
+├────────────────────────────────────┤
+│ 4. 操作区                          │
+│    菜单选择 或 输入框               │
+├────────────────────────────────────┤
+│ 5. 底部帮助提示区                  │
+│    ↑/↓ 移动 | Enter 确认 | ...      │
+└────────────────────────────────────┘
+```
+
+#### 各区域详细说明
+
+**1. Logo区**
+- 内容：DPANEL ASCII艺术字（使用DPanel蓝色）
+- 显示规则：所有页面始终显示
+- 样式：`primaryColor` (#1890FF) + Bold
+- **顶部间距**：1个空行（Top padding）
+
+**2. 标题区**
+- 格式：`🚀 DPanel 安装器 - 步骤名 (当前步骤/总步骤数)`
+- 示例：`🚀 DPanel 安装器 - 选择版本 (4/18)`
+- 语言：根据选择的语言显示步骤名
+- 样式：`titleStyle` (蓝色 + 粗体)
+- ⚠️ **禁止**：不要在操作区再次显示步骤名（避免重复）
+
+**3. 提示区（可选）**
+- 用途：显示环境状态、警告、错误、提示信息
+- 样式规则：
+  - 成功信息：`successStyle` ("✓ " + 文本)
+  - 警告信息：`warningBoxStyle` (带边框的提示框)
+  - 错误信息：`errorStyle`
+  - 一般信息：`infoStyle`
+- 显示规则：只在需要提示时显示，不需要时不留白
+- 位置：标题区和操作区之间
+
+**4. 操作区**
+- 内容：菜单选择 或 输入框
+- 菜单样式：`menuItemStyle` / `menuItemSelectedStyle`
+- 输入样式：`inputStyle`
+- ⚠️ **禁止**：不要在此区域显示步骤名（已在标题区显示）
+
+**5. 底部帮助提示区**
+- 内容：操作快捷键说明
+- 菜单页面：`help_navigation` ("↑/↓ 移动 | Enter 确认 | Esc/Backspace 返回 | q/Ctrl+C 退出")
+- 输入页面：`help_input` ("Enter 确认 | Esc/Backspace 返回 | q/Ctrl+C 退出")
+- 完成页面：`quit_prompt` ("按 'q' 退出")
+- 样式：`helpStyle` (灰色 #8C8C8C)
+
+#### 间距规范（⚠️ 严格遵守）
+
+**所有步骤必须遵循统一的间距规则**：
+
+```
+┌────────────────────────────────┐
+│ [空行]                         │ ← Top padding (1个空行)
+│                                │
+│ [DPANEL Logo]                  │ ← Logo区
+│                                │ ← Logo后换行
+│ 🚀 DPanel 安装器 - 步骤名 (n/m) │ ← 标题区
+│ [空行]                         │ ← 标题后换行
+│ [空行]                         │ ← 额外间距
+│ [提示区 - 可选]                │ ← 提示信息（如果需要）
+│ [操作区]                       │ ← 菜单或输入
+│                                │
+│ ↑/↓ 移动 | Enter 确认 | ...     │ ← 帮助提示区
+└────────────────────────────────┘
+```
+
+**间距定义**：
+
+| 位置 | 换行符数量 | 说明 | 代码位置 |
+|------|-----------|------|---------|
+| Logo顶部 | 1个`\n` | Top padding | View() line 308 |
+| Logo底部 | 1个`\n` | Logo后换行 | View() line 312 |
+| 标题底部 | 2个`\n` | 标题后固定换行 + 额外间距 | View() line 330 + 各步骤case |
+| 标题与内容 | 2个空行 | 固定间距 | 所有步骤统一 |
+
+**代码实现**：
+
+```go
+func (m model) View() string {
+    var content strings.Builder
+
+    // Top padding - 所有步骤统一
+    content.WriteString("\n")
+
+    // 1. Logo区
+    content.WriteString(renderLogo())
+    content.WriteString("\n")
+
+    // 2. 标题区
+    titleText := fmt.Sprintf("🚀 %s - %s (%d/%d)", ...)
+    content.WriteString(titleStyle.Render(titleText))
+    content.WriteString("\n")
+
+    // 标题后固定换行 - 所有步骤统一
+    content.WriteString("\n")
+
+    // 3-5. 各步骤内容（包含额外间距）
+    switch m.step {
+    case StepLanguage:
+        content.WriteString("\n")  // ← 额外间距
+        content.WriteString(m.renderMenu())
+
+    case StepEdition:
+        content.WriteString("\n")  // ← 额外间距
+        content.WriteString(m.renderEdition())
+
+    // ... 其他步骤相同
+    }
+
+    // 6. 底部帮助提示区
+    content.WriteString("\n")
+    content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
+
+    return content.String()
+}
+```
+
+**重要规则**：
+
+✅ **必须遵守**：
+1. 所有步骤的顶部必须有1个空行（Top padding）
+2. 所有步骤的标题后必须有2个空行（固定 + 额外）
+3. Logo后面必须有1个换行符
+4. 所有步骤的间距必须完全一致
+
+❌ **禁止行为**：
+1. 省略任何步骤的Top padding
+2. 省略任何步骤的额外间距（`\n`）
+3. 在不同步骤使用不同的间距规则
+4. 在操作区显示步骤名（已在标题区显示）
+
+**常见错误**：
+
+❌ **错误1**：不同步骤间距不一致
+```go
+// ❌ 错误：有些步骤有额外间距，有些没有
+case StepLanguage:
+    content.WriteString(m.renderMenu())         // 缺少额外"\n"
+
+case StepEdition:
+    content.WriteString("\n")
+    content.WriteString(m.renderEdition())      // 有额外"\n"
+
+// ✅ 正确：所有步骤统一
+case StepLanguage:
+    content.WriteString("\n")
+    content.WriteString(m.renderMenu())
+
+case StepEdition:
+    content.WriteString("\n")
+    content.WriteString(m.renderEdition())
+```
+
+❌ **错误2**：省略Top padding
+```go
+// ❌ 错误：没有Top padding
+content.WriteString(renderLogo())
+
+// ✅ 正确：所有页面都有Top padding
+content.WriteString("\n")
+content.WriteString(renderLogo())
+```
+
+#### 代码实现规范
+
+```go
+func (m model) View() string {
+    var content strings.Builder
+
+    // 1. Logo区（始终显示）
+    content.WriteString(renderLogo())
+    content.WriteString("\n")
+
+    // 2. 标题区（带步骤号）
+    titleText := fmt.Sprintf("🚀 %s - %s (%d/%d)",
+        i18n.T("title"),
+        stepName,
+        m.step,
+        StepError-1)
+    content.WriteString(titleStyle.Render(titleText))
+    content.WriteString("\n")
+
+    // 3. 提示区（可选）
+    if needsWarning {
+        content.WriteString(warningStyle.Render("⚠️ " + warningText))
+        content.WriteString("\n")
+    }
+    if needsHint {
+        content.WriteString(hintBoxStyle.Render(hintText))
+        content.WriteString("\n")
+    }
+
+    // 4. 操作区
+    content.WriteString(m.renderMenu()) // 或 renderInput()
+
+    // 5. 底部帮助提示区
+    content.WriteString("\n")
+    content.WriteString(helpStyle.Render(i18n.T("help_navigation")))
+
+    return content.String()
+}
+```
+
+#### 常见错误 ❌
+
+1. **标题重复**：标题区显示"选择版本"后，操作区又显示"选择版本"
+   - ❌ 错误：标题区 + 操作区都显示步骤名
+   - ✅ 正确：只在标题区显示，操作区直接显示菜单
+
+2. **缺少提示区**：环境检测信息直接显示在操作区
+   - ❌ 错误：提示信息和菜单混在一起
+   - ✅ 正确：提示信息独立显示在提示区，使用对应样式
+
+3. **样式使用错误**：错误信息使用了info样式
+   - ❌ 错误：错误信息用 `infoStyle`
+   - ✅ 正确：错误信息用 `errorStyle`，警告用 `hintBoxStyle`
+
 ### 全屏无边框设计
 - 移除了传统的边框样式
 - 使用整个终端屏幕
 - 添加分隔线区分不同区域
 - 更舒适的间距和布局
 
-### 配色方案（Claude Code / VS Code Dark）
-- 主色：`#007ACC` (蓝色)
-- 成功：`#4EC9B0` (青色)
-- 警告：`#CE9178` (橙色)
-- 错误：`#F14C4C` (红色)
-- 背景：`#1E1E1E` (深色背景)
-- 输入框：`#3C3C3C` (输入背景)
+### 配色方案（DPanel 主题）
+- 主色：`#1890FF` (蓝色)
+- 成功：`#52C41A` (绿色)
+- 警告：`#FAAD14` (琥珀色)
+- 错误：`#FF4D4F` (红色)
+- 背景：`#141414` (深色背景)
+- 输入框：`#2A2A2A` (输入背景)
+- 选中：`#0050B3` (选中背景)
+- 文本：`#E8E8E8` (主文本)
+
+### 提示信息样式规范（⚠️ 严格遵守）
+
+**TUI 中的提示信息分为 4 种类型，每种类型有固定的样式和图标**
+
+#### 1. 成功信息 (Success)
+
+**用途**：操作成功完成、状态正常
+
+**样式**：`successStyle`
+- 颜色：`#52C41A` (成功绿色)
+- 图标：`✓`
+- 粗体：`Bold(true)`
+
+**代码示例**：
+```go
+content.WriteString(successStyle.Render("✓ " + i18n.T("installation_complete")))
+```
+
+**使用场景**：
+- ✅ 安装成功
+- ✅ Docker/Podman 检测成功
+- ✅ 配置验证通过
+
+#### 2. 错误信息 (Error)
+
+**用途**：操作失败、严重错误
+
+**样式**：`errorStyle`
+- 颜色：`#FF4D4F` (错误红色)
+- 图标：`✗`
+- 粗体：`Bold(true)`
+
+**代码示例**：
+```go
+content.WriteString(errorStyle.Render("✗ " + i18n.T("installation_failed")))
+```
+
+**使用场景**：
+- ✅ 安装失败
+- ✅ 权限不足
+- ✅ 配置错误
+
+**错误框样式**（多行错误信息）：`errorBoxStyle`
+```go
+errorBoxStyle = lipgloss.NewStyle().
+    Foreground(errorColor).          // 红色文字
+    Background(bgInputColor).         // 深色背景
+    Padding(1, 2).                   // 内边距
+    MarginBottom(1).                 // 底部外边距
+    Border(lipgloss.RoundedBorder()).// 圆角边框
+    BorderForeground(errorColor)     // 红色边框
+```
+
+#### 3. 警告信息 (Warning)
+
+**用途**：需要注意但不阻止操作的信息
+
+**样式**：`warningStyle`
+- 颜色：`#FAAD14` (警告琥珀色)
+- 图标：`⚠️`
+- 粗体：`Bold(true)`
+
+**代码示例**：
+```go
+content.WriteString(warningStyle.Render("⚠️ " + warningText))
+```
+
+**使用场景**：
+- ✅ Docker 未安装但可继续
+- ✅ 功能限制提示
+- ✅ 配置建议
+
+**警告框样式**（重要警告）：`warningBoxStyle`
+```go
+warningBoxStyle = lipgloss.NewStyle().
+    Foreground(warningColor).         // 琥珀色文字
+    Background(bgInputColor).         // 深色背景
+    Padding(1, 2).                   // 内边距
+    MarginBottom(1).                 // 底部外边距
+    Border(lipgloss.RoundedBorder()).// 圆角边框
+    BorderForeground(warningColor)    // 琥珀色边框
+```
+
+**视觉效果**：
+```
+╭────────────────────────────────────────╮
+│ 您的系统未安装 Docker Desktop。         │
+│ https://www.docker.com/products/...    │
+╰────────────────────────────────────────╯
+```
+
+#### 4. 信息提示 (Info)
+
+**用途**：一般性提示、说明文字
+
+**样式**：`infoStyle`
+- 颜色：`#1890FF` (信息蓝色)
+- 图标：`ℹ️`、`⏳`（等待中）
+- 粗体：`Bold(true)`
+
+**代码示例**：
+```go
+content.WriteString(infoStyle.Render("ℹ️  " + infoText))
+content.WriteString(infoStyle.Render("⏳ " + i18n.T("please_wait")))
+```
+
+**使用场景**：
+- ✅ 功能说明
+- ✅ 操作提示
+- ✅ 等待状态
+- ✅ 一般性建议
+
+**信息框样式**（重要提示）：`infoBoxStyle`
+```go
+infoBoxStyle = lipgloss.NewStyle().
+    Foreground(infoColor).             // 蓝色文字
+    Background(bgInputColor).          // 深色背景
+    Padding(1, 2).                     // 内边距
+    MarginBottom(1).                   // 底部外边距
+    Border(lipgloss.RoundedBorder()).  // 圆角边框
+    BorderForeground(infoColor)        // 蓝色边框
+```
+
+#### 样式选择指南
+
+| 场景 | 使用样式 | 图标 | 是否带框 |
+|------|---------|------|---------|
+| 操作成功 | `successStyle` | ✓ | 否 |
+| 检测成功 | `successStyle` | ✓ | 否 |
+| 安装失败 | `errorStyle` | ✗ | 否 |
+| 严重错误 | `errorStyle` | ✗ | 是（多行） |
+| 未安装Docker | `warningBoxStyle` | - | 是 |
+| 功能限制 | `warningStyle` | ⚠️ | 否 |
+| 配置建议 | `infoStyle` | ℹ️ | 否 |
+| 等待中 | `infoStyle` | ⏳ | 否 |
+| 功能说明 | `infoStyle` | ℹ️ | 是（重要） |
+
+#### 常见错误 ❌
+
+1. **样式混淆**：错误信息使用了 infoStyle
+   - ❌ 错误：`infoStyle.Render("✗ 安装失败")`
+   - ✅ 正确：`errorStyle.Render("✗ 安装失败")`
+
+2. **缺少图标**：提示信息没有图标前缀
+   - ❌ 错误：`successStyle.Render("安装完成")`
+   - ✅ 正确：`successStyle.Render("✓ 安装完成")`
+
+3. **图标不匹配**：成功信息使用了错误图标
+   - ❌ 错误：`successStyle.Render("✗ 安装完成")`
+   - ✅ 正确：`successStyle.Render("✓ 安装完成")`
+
+4. **多行信息未使用框样式**：多行警告信息未使用 warningBoxStyle
+   - ❌ 错误：`warningStyle.Render("长文本1\n长文本2")`
+   - ✅ 正确：`warningBoxStyle.Render("长文本1\n长文本2")`
+
+#### 完整代码示例
+
+```go
+// 成功信息 - 简单文本
+content.WriteString(successStyle.Render("✓ " + i18n.T("docker_detected")))
+content.WriteString("\n\n")
+
+// 信息提示 - 简单文本
+content.WriteString(infoStyle.Render(i18n.T("container_available_prompt")))
+content.WriteString("\n\n")
+
+// 等待状态 - 使用时钟图标
+content.WriteString(infoStyle.Render("⏳ " + i18n.T("please_wait")))
+content.WriteString("\n")
+
+// 警告框 - 多行重要信息
+warningText := i18n.T("docker_not_found_desktop") + "\n\n" +
+    i18n.T("docker_download_url")
+content.WriteString(warningBoxStyle.Render(warningText))
+content.WriteString("\n")
+
+// 错误信息 - 简单文本
+content.WriteString(errorStyle.Render("✗ " + i18n.T("installation_failed")))
+content.WriteString("\n\n")
+if err != nil {
+    content.WriteString(err.Error())
+}
+```
+```
+
+### 禁用选项规范
+
+**用于标记不可用的菜单选项（如未安装 Docker 时的容器安装选项）**
+
+#### 样式定义
+```go
+menuItemDisabledStyle = lipgloss.NewStyle().
+    Foreground(mutedColor).      // 灰色文字 #858585
+    PaddingLeft(2).               // 左侧2列内边距
+    MarginBottom(0).              // 底部无外边距
+    Italic(true)                  // 斜体显示
+
+menuItemSelectedDisabledStyle = lipgloss.NewStyle().
+    Foreground(mutedColor).       // 灰色文字 #858585
+    Background(bgInputColor).     // 深色背景 #3C3C3C
+    PaddingLeft(2).               // 左侧2列内边距
+    PaddingRight(1).              // 右侧1列内边距
+    MarginBottom(0).              // 底部无外边距
+    Italic(true)                  // 斜体显示
+```
+
+#### 使用场景
+- ✅ **容器安装未安装 Docker 时**：显示但禁用容器安装选项
+- ✅ **功能未实现时**：显示但禁用相关功能选项
+- ✅ **权限不足时**：显示但禁用需要更高权限的选项
+- ✅ **依赖缺失时**：显示但禁用缺少依赖的选项
+
+#### Model 结构扩展
+```go
+type model struct {
+    // ... 其他字段
+    choices      []string  // 选项文本
+    descriptions []string  // 选项描述
+    disabled     []bool    // 禁用状态（与 choices 一一对应）
+    // ... 其他字段
+}
+```
+
+#### 设置选项示例
+```go
+func (m *model) setupInstallTypeChoices() {
+    dockerAvailable := m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable
+
+    if dockerAvailable {
+        // Docker 可用 - 两个选项都启用
+        m.choices = []string{
+            i18n.T("container_install"),
+            i18n.T("binary_install"),
+        }
+        m.descriptions = []string{
+            i18n.T("container_install_desc"),
+            i18n.T("binary_install_desc"),
+        }
+        m.disabled = []bool{false, false}
+    } else {
+        // Docker 不可用 - 容器安装显示但禁用
+        m.choices = []string{
+            i18n.T("container_install"),
+            i18n.T("binary_install"),
+        }
+        m.descriptions = []string{
+            i18n.T("container_install_desc") + " " + i18n.T("container_install_disabled"),
+            i18n.T("binary_install_desc"),
+        }
+        m.disabled = []bool{true, false}  // 容器安装被禁用
+    }
+}
+```
+
+#### 渲染选项示例
+```go
+func (m model) renderMenu() string {
+    var s strings.Builder
+    for i, choice := range m.choices {
+        isDisabled := len(m.disabled) > i && m.disabled[i]
+        isSelected := i == m.cursor
+
+        if isDisabled && isSelected {
+            s.WriteString(menuItemSelectedDisabledStyle.Render(fmt.Sprintf("▸ %s", choice)))
+        } else if isDisabled {
+            s.WriteString(menuItemDisabledStyle.Render(fmt.Sprintf("  %s", choice)))
+        } else if isSelected {
+            s.WriteString(menuItemSelectedStyle.Render(fmt.Sprintf("▸ %s", choice)))
+        } else {
+            s.WriteString(menuItemStyle.Render(fmt.Sprintf("  %s", choice)))
+        }
+        // ... 渲染描述
+    }
+    return s.String()
+}
+```
+
+#### 导航跳过禁用选项
+```go
+case "up", "k":
+    if m.cursor > 0 {
+        m.cursor--
+        // 跳过禁用的选项
+        for m.cursor > 0 && len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+            m.cursor--
+        }
+    }
+case "down", "j":
+    if m.cursor < len(m.choices)-1 {
+        m.cursor++
+        // 跳过禁用的选项
+        for m.cursor < len(m.choices)-1 && len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+            m.cursor++
+        }
+    }
+```
+
+#### 防止选择禁用选项
+```go
+case StepInstallType:
+    // 检查选定选项是否被禁用
+    if len(m.disabled) > m.cursor && m.disabled[m.cursor] {
+        // 选项被禁用，不执行任何操作
+        return m, nil
+    }
+    // 处理正常选择逻辑...
+```
+
+#### 视觉效果
+```
+安装方式
+
+  容器安装（Docker 不可用 - 需要手动安装）
+▸ 二进制安装
+  将 DPanel 安装为独立二进制程序
+
+↑/↓ 移动 | Enter 确认 | Esc/Backspace 返回 | q/Ctrl+C 退出
+```
+
+#### 翻译键规范
+**禁用提示文本**（附加到描述后）：
+- 英文：`"container_install_disabled": "(Docker not available - requires manual installation)"`
+- 中文：`"container_install_disabled": "（Docker 不可用 - 需要手动安装）"`
+
+**格式**：
+- 英文使用括号：`(reason)`
+- 中文使用括号：`（原因）`
+- 文本简洁明了，说明为什么禁用
+
+#### 实现要点
+1. **显示但禁用**：用户可以看到有哪些选项，但无法选择
+2. **清晰提示**：在描述中添加禁用原因
+3. **视觉区分**：使用灰色+斜体样式
+4. **自动跳过**：上下键自动跳过禁用选项
+5. **防止选择**：回车键检查选项是否被禁用
 
 ### 交互优化
 - 清晰的视觉反馈
 - 合理的间距
 - 明确的操作提示
 - 详细的配置描述
+
+### 帮助提示规范（⚠️ 严格遵守）
+
+**TUI 界面底部的帮助提示必须保持以下格式，不得随意更改**：
+
+#### 菜单选择页面
+```
+↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit
+↑/↓ 移动 | Enter 确认 | Esc/Backspace 返回 | q/Ctrl+C 退出
+```
+
+#### 输入页面
+```
+Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit
+Enter 确认 | Esc/Backspace 返回 | q/Ctrl+C 退出
+```
+
+#### 完成页面
+```
+Press 'q' to quit
+按 'q' 退出
+```
+
+**重要说明**：
+- ✅ **Enter**：确认/选择/继续
+- ✅ **Esc/Backspace**：返回上一步（在输入页面，Backspace 在有输入内容时删除字符，无内容时返回）
+- ✅ **q/Ctrl+C**：退出程序
+- ✅ **↑/↓**：在菜单项之间移动
+- ⚠️ 帮助文本使用 `helpStyle` 样式（灰色，`#858585`）
+- ⚠️ 语言选择页面使用硬编码文本（因为 i18n 尚未初始化）
+- ⚠️ 其他页面使用 i18n 翻译键：`help_navigation`、`help_input`、`quit_prompt`
 
 ## TUI 安装流程
 
@@ -253,7 +861,7 @@ docker run -d \
 - ✅ CLI 模式支持所有参数
 - ✅ 多语言支持（英文/简体中文）
 - ✅ 真实的环境检测（测试服务可用性）
-- ✅ Claude Code / VS Code Dark 配色方案
+- ✅ DPanel 主题配色方案
 - ✅ 完整的安装日志记录
 - ✅ 最终执行命令的保存
 - ✅ Docker 命令构建
@@ -279,6 +887,91 @@ docker run -d \
 - **所有界面文本使用语言包**
 - **支持英文和简体中文**
 
+## 开发注意事项
+
+### ⚠️ 核心原则：优先使用现有的方法和逻辑
+
+**在开发新功能或修改代码时，必须遵循以下原则**：
+
+#### 1. **优先复用现有样式**
+- ✅ **优先使用**：已定义的 TUI 样式（`titleStyle`, `successStyle`, `hintBoxStyle` 等）
+- ❌ **避免创建**：新的相似样式，除非有显著差异
+- 📋 **检查位置**：`internal/ui/tui/tui.go` 第 84-148 行
+
+**示例**：
+```go
+// ✅ 好的做法：使用现有的 hintBoxStyle
+s.WriteString(hintBoxStyle.Render(warningText))
+
+// ❌ 不好的做法：创建新的类似样式
+myWarningStyle := lipgloss.NewStyle().
+    Foreground(lipgloss.Color("#FF8800")).  // 与 warningColor 重复
+    Background(lipgloss.Color("#3C3C3C"))   // 与 bgInputColor 重复
+```
+
+#### 2. **优先复用现有的翻译键**
+- ✅ **优先使用**：已存在的翻译键
+- ❌ **避免添加**：重复或相似的新翻译键
+- 📋 **检查位置**：`pkg/i18n/translations/en.json` 和 `zh.json`
+
+**示例**：
+```json
+// ✅ 好的做法：合并相似翻译
+"docker_not_found_desktop": "Docker Desktop is not installed"
+
+// ❌ 不好的做法：为每个系统创建单独的键
+"docker_not_found_windows": "Docker Desktop is not installed",
+"docker_not_found_macos": "Docker Desktop is not installed"
+```
+
+#### 3. **优先复用现有代码逻辑**
+- ✅ **优先使用**：已有的函数和方法
+- ❌ **避免重复**：实现相同逻辑的新代码
+- 📋 **检查方法**：使用 `Grep` 工具搜索相关实现
+
+**示例**：
+```go
+// ✅ 好的做法：使用现有的环境检测逻辑
+if m.envCheck.DockerAvailable {
+    // 处理逻辑
+}
+
+// ❌ 不好的做法：重新实现环境检测
+dockerExists := checkDockerCommand()  // 重复实现
+if dockerExists {
+    // 处理逻辑
+}
+```
+
+#### 4. **遵循已定义的规范**
+- ✅ **严格遵守**：帮助提示格式、样式使用规范
+- ✅ **保持一致**：配色方案、交互模式
+- 📋 **参考文档**：`CLAUDE.md` 中的相关规范章节
+
+#### 5. **修改前必查**
+在修改或添加代码前，必须完成以下检查：
+1. 🔍 使用 `Grep` 搜索是否有类似实现
+2. 📖 查阅 `CLAUDE.md` 相关规范
+3. 🎨 检查是否有可复用的样式和翻译键
+4. 💡 评估是否可以通过扩展现有功能实现
+
+#### 6. **规范更新**
+当确实需要创建新的样式、翻译键或方法时：
+- ✅ 必须更新相关文档（`CLAUDE.md`）
+- ✅ 添加清晰的注释说明用途
+- ✅ 遵循命名约定
+- ✅ 考虑未来可扩展性
+
+### 代码审查检查项
+
+在提交代码前，确认以下问题：
+- [ ] 是否复用了现有的样式？（检查 TUI 样式定义）
+- [ ] 是否复用了现有的翻译键？（检查翻译文件）
+- [ ] 是否复用了现有的代码逻辑？（使用 Grep 搜索）
+- [ ] 是否遵循了已定义的规范？（查阅 CLAUDE.md）
+- [ ] 新增的内容是否已更新文档？
+- [ ] 代码风格是否与现有代码一致？
+
 ## Agent Teams 系统
 
 项目使用基于 Claude Code 的多 Agent 协作系统，用于提高开发效率、保证代码质量、实现模块化开发。
@@ -302,7 +995,7 @@ docker run -d \
 #### **ui-dev** - TUI 界面专家
 - **职责**：Bubble Tea TUI 实现
 - **主要文件**：`internal/ui/tui/tui.go`
-- **专业领域**：终端 UI 设计、状态管理、VS Code Dark 主题
+- **专业领域**：终端 UI 设计、状态管理、DPanel 主题
 
 #### **config-dev** - 配置架构师
 - **职责**：配置结构设计和验证
@@ -558,7 +1251,7 @@ gosec ./...
 6. **日志记录**：使用 slog 记录到 run.log，便于调试
 7. **环境检测**：区分"命令存在"和"服务可用"两种情况
 8. **全屏显示**：TUI 使用全屏无边框设计，最大化利用屏幕空间
-9. **配色一致**：使用 Claude Code / VS Code Dark 配色方案
+9. **配色一致**：使用 DPanel 主题配色方案
 10. **命令记录**：所有安装过程和最终命令必须完整记录
 
 ## 调试技巧
