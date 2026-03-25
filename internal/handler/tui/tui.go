@@ -308,7 +308,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "backspace":
 			// If in input step and has content, delete last character
 			// Otherwise, go back to previous step
-			if m.isInputStep() && len(m.inputValue) > 0 {
+			if isInputStep(m.step) && len(m.inputValue) > 0 {
 				m.inputValue = m.inputValue[:len(m.inputValue)-1]
 			} else {
 				newModel, cmd := m.goBack()
@@ -316,7 +316,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			// Handle text input for input steps
-			if m.isInputStep() && len(msg.String()) == 1 {
+			if isInputStep(m.step) && len(msg.String()) == 1 {
 				m.inputValue += msg.String()
 			}
 		}
@@ -462,23 +462,6 @@ func (m model) View() string {
 
 	// Return content
 	return content.String()
-}
-
-// renderLogo renders the DPANEL ASCII art logo
-func renderLogo() string {
-	logoStyle := lipgloss.NewStyle().
-		Foreground(primaryColor).
-		Bold(true)
-
-	// 重新设计的 DPANEL ASCII 艺术字
-	logo := "██████╗ ██████╗  █████╗ ███╗   ██╗███████╗██╗     \n" +
-		"██╔══██╗██╔══██╗██╔══██╗████╗  ██║██╔════╝██║     \n" +
-		"██║  ██║██████╔╝███████║██╔██╗ ██║█████╗  ██║     \n" +
-		"██║  ██║██╔═══╝ ██╔══██║██║╚██╗██║██╔══╝  ██║     \n" +
-		"██████╔╝██║     ██║  ██║██║ ╚████║███████╗███████╗\n" +
-		"╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝\n"
-
-	return logoStyle.Render(logo)
 }
 
 // handleEnter handles the Enter key press
@@ -693,30 +676,6 @@ func (m model) isInputStep() bool {
 		m.step == StepDataPath ||
 		m.step == StepProxy ||
 		m.step == StepDNS
-}
-
-// getStepTitle returns the title for the current step
-func (m model) getStepTitle() string {
-	switch m.step {
-	case StepDockerConfig:
-		return i18n.T("docker_host")
-	case StepTLSConfig:
-		return i18n.T("tls_path")
-	case StepSSHConfig:
-		return i18n.T("ssh_user")
-	case StepContainerName:
-		return i18n.T("container_name")
-	case StepPort:
-		return i18n.T("access_port")
-	case StepDataPath:
-		return i18n.T("data_path")
-	case StepProxy:
-		return i18n.T("proxy_address")
-	case StepDNS:
-		return i18n.T("dns_address")
-	default:
-		return ""
-	}
 }
 
 // installMsg is a message to trigger installation
@@ -1080,7 +1039,7 @@ func (m model) renderMenu() string {
 
 func (m model) renderInput() string {
 	var s strings.Builder
-	s.WriteString(inputLabelStyle.Render(m.getStepTitle() + ":"))
+	s.WriteString(inputLabelStyle.Render(getStepTitle(m.step) + ":"))
 	s.WriteString("\n\n")
 	s.WriteString(inputStyle.Render(m.inputValue + "█"))
 	return s.String()
