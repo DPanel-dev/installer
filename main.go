@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler/cli"
 	"github.com/dpanel-dev/installer/internal/handler/tui"
 )
@@ -42,17 +43,32 @@ func run() error {
 	slog.Debug("Starting installer", "config", cfg, "args", args)
 
 	// 无参数 → TUI，有参数 → CLI
+	var handlerErr error
 	if len(args) == 0 {
 		slog.Debug("Starting installer", "mode", "tui")
-		return tui.NewTUI().Run(cfg)
+		handlerErr = tui.NewTUI().Run(cfg)
+	} else {
+		slog.Debug("Starting installer", "mode", "cli")
+		handlerErr = cli.NewCLI(
+			cli.WithArgs(args),
+			cli.WithVersionInfo(version, commit, date),
+		).Run(cfg)
 	}
 
-	slog.Debug("Starting installer", "mode", "cli")
+	if handlerErr != nil {
+		return handlerErr
+	}
 
-	return cli.NewCLI(
-		cli.WithArgs(args),
-		cli.WithVersionInfo(version, commit, date),
-	).Run(cfg)
+	// 检查配置是否完成（用户中途退出时 Action 为空）
+	if cfg.Action == "" {
+		slog.Info("User cancelled or configuration incomplete")
+		return nil
+	}
+
+	// 执行安装
+	slog.Info("Configuration complete, starting installation")
+	engine := core.NewEngine(cfg)
+	return engine.Run()
 }
 
 // setupLogger 设置日志记录器

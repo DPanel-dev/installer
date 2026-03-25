@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/dpanel-dev/installer/internal/config"
-	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler"
 )
 
@@ -99,9 +98,8 @@ func (c *CLI) run(cfg *config.Config) error {
 		return fmt.Errorf("failed to apply config: %w", err)
 	}
 
-	// 3. 执行安装
-	engine := core.NewEngine(cfg)
-	return engine.Run()
+	// 配置完成，由 main 调用 engine 执行
+	return nil
 }
 
 // parseFlags 解析命令行参数

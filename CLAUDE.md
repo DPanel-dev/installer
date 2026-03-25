@@ -177,7 +177,7 @@ func run() error {
   - 以及其他配置选项
 - **所有帮助信息使用英文**
 
-**`internal/ui/tui/tui.go`**：Bubble Tea TUI 实现
+**`internal/handler/tui/tui.go`**：Bubble Tea TUI 实现
 - **全屏显示**：无边框，使用整个终端屏幕
 - **DPanel 配色方案**：
   - 主色：`#1890FF` (DPanel 蓝色)
@@ -1181,7 +1181,7 @@ func (e *Engine) saveInstallationLog() error {
 #### 1. **优先复用现有样式**
 - ✅ **优先使用**：已定义的 TUI 样式（`titleStyle`, `successStyle`, `hintBoxStyle` 等）
 - ❌ **避免创建**：新的相似样式，除非有显著差异
-- 📋 **检查位置**：`internal/ui/tui/tui.go` 第 84-148 行
+- 📋 **检查位置**：`internal/handler/tui/tui.go` 第 84-148 行
 
 **示例**：
 ```go
@@ -1347,7 +1347,7 @@ if install.IsValidInstallType(installType) {
 
 #### **ui-dev** - TUI 界面专家
 - **职责**：Bubble Tea TUI 实现
-- **主要文件**：`internal/ui/tui/tui.go`
+- **主要文件**：`internal/handler/tui/tui.go`
 - **专业领域**：终端 UI 设计、状态管理、DPanel 主题
 
 #### **config-dev** - 配置架构师
@@ -1608,6 +1608,7 @@ gosec ./...
 10. **配色一致**：使用 DPanel 主题配色方案
 11. **命令记录**：所有安装过程和最终命令必须完整记录
 12. **使用常量**：所有配置值必须使用 `internal/install/constants.go` 中定义的常量，禁止硬编码字符串字面量
+13. **任务完成编译**：每次完成重要任务后，必须编译二进制文件到 runtime 目录：`go build -o runtime/dpanel-installer main.go`
 
 ## 调试技巧
 
@@ -1663,7 +1664,7 @@ podman ps
 ### 提交范围 (scope)
 
 常用范围：
-- `tui`: TUI 界面相关 (`internal/ui/tui/`)
+- `tui`: TUI 界面相关 (`internal/handler/tui/`)
 - `engine`: 安装引擎相关 (`internal/install/`)
 - `config`: 配置相关 (`internal/install/config.go`)
 - `cli`: CLI 命令相关 (`main.go`)

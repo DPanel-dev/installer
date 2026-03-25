@@ -7,7 +7,6 @@
   "upgrade_panel_desc": "Upgrade existing DPanel installation",
   "uninstall_panel": "Uninstall Panel",
   "uninstall_panel_desc": "Remove DPanel from your system",
-
   "environment_check": "Environment Check",
   "docker_detected": "Docker detected",
   "podman_detected": "Podman detected",
@@ -16,13 +15,11 @@
   "permission_ok": "Permission OK",
   "permission_denied": "Permission denied",
   "registry_check": "Checking registry connectivity...",
-
   "container_available_prompt": "You can choose to install via container or binary.",
   "docker_not_found_desktop": "Docker Desktop is not installed on your system.",
   "docker_not_found_linux": "Docker is not installed. You can install it automatically or use binary installation.",
   "docker_not_found_with_os": "You are currently using %s system. Docker Desktop is not installed. Please install Docker manually or use binary installation.",
   "docker_not_found_linux_with_os": "You are currently using %s system. Docker is not installed. You can install it automatically or use binary installation.",
-
   "install_docker": "Install Docker",
   "install_docker_desc": "Install Docker/Podman automatically (Linux only)",
   "install_docker_linux_desc": "Install Docker automatically using the official script",
@@ -31,16 +28,13 @@
   "container_install_disabled": "(Docker not available - requires manual installation)",
   "binary_only_notice": "Binary installation only (Docker/Podman not available)",
   "install_docker_prompt": "Docker is not installed. Do you want to install Docker manually?",
-  "manual_docker_prompt": "Please install Docker Desktop manually and restart the installer.",
   "docker_install_linux_prompt": "You can choose to install Docker automatically or use binary installation.",
-
   "install_method": "Installation Method",
   "container_install": "Container Installation",
   "container_install_desc": "Run DPanel in a Docker/Podman container",
   "binary_install": "Binary Installation",
   "binary_install_desc": "Install DPanel as a standalone binary",
   "binary_install_edition_warning": "Binary installation only supports Lite Edition.\n\nStandard Edition requires Nginx and SSL certificate support, which is only available in container installation.",
-
   "select_version": "Select Version",
   "community_edition": "Community Edition",
   "community_edition_desc": "Free and open source version",
@@ -48,26 +42,21 @@
   "professional_edition_desc": "Advanced features for production (https://dpanel.cc/pro)",
   "development_edition": "Development Edition",
   "development_edition_desc": "Latest features, may be unstable",
-
   "select_edition": "Select Edition",
   "standard_edition": "Standard Edition",
   "standard_edition_desc": "Includes Nginx and SSL certificate support (requires ports 80 & 443)",
   "lite_edition": "Lite Edition",
   "lite_edition_desc": "Container management only, lighter resource usage",
-
   "select_os": "Select Base OS",
   "alpine": "Alpine Linux",
   "alpine_desc": "Based on musl, lighter weight",
   "debian": "Debian",
   "debian_desc": "Based on glibc, more stable",
-
   "select_registry": "Select Image Registry",
   "docker_hub": "Docker Hub",
   "docker_hub_desc": "Docker official registry",
   "aliyun": "Aliyun (China)",
   "aliyun_desc": "Aliyun mirror for faster downloads in China",
-  "auto_detect": "Auto Detect",
-
   "docker_connection": "Docker/Podman Connection",
   "local_sock": "Local Socket",
   "local_sock_desc": "Connect to local Docker/Podman via Unix socket",
@@ -75,7 +64,6 @@
   "remote_tcp_desc": "Connect to remote Docker/Podman via TCP",
   "remote_ssh": "Remote SSH",
   "remote_ssh_desc": "Connect to remote Docker/Podman via SSH",
-
   "sock_path": "Socket Path",
   "sock_path_desc": "Unix socket file path (e.g., /var/run/docker.sock)",
   "docker_host": "Docker Host",
@@ -84,67 +72,51 @@
   "enable_tls_prompt": "Enable TLS for TCP connection?",
   "tls_path": "TLS Certificate Path",
   "tls_path_desc": "Directory containing TLS certificates",
-
   "ssh_user": "SSH Username",
   "ssh_password": "SSH Password",
   "ssh_key": "SSH Private Key Path",
   "ssh_auth_desc": "Enter SSH authentication credentials",
-
   "container_name": "Container Name",
   "container_name_desc": "Name for the DPanel container",
   "container_exists": "Container already exists, please choose another name",
-
   "access_port": "Access Port",
-  "access_port_desc": "Port for accessing DPanel web interface (0 for random)",
   "random_port": "Random Port",
-
   "data_path": "Data Storage Path",
   "data_path_desc": "Directory for storing DPanel data",
-  "directory_not_empty": "Directory is not empty, please choose an empty directory",
-
   "proxy_address": "Proxy Address",
   "proxy_address_desc": "Proxy for container to access external resources (leave empty if not needed)",
   "docker_daemon_proxy": "For image pull acceleration, configure Docker daemon.json",
-
   "dns_address": "DNS Address",
   "dns_address_desc": "DNS server for container (leave empty to use default)",
-
   "confirm_install": "Confirm Installation",
   "configuration_summary": "Configuration Summary",
   "start_installation": "Start Installation",
   "back_to_modify": "Back to Modify",
-
   "installing": "Installing...",
   "please_wait": "Please wait...",
   "installation_complete": "Installation Completed Successfully!",
   "installation_failed": "Installation Failed",
-
   "upgrade_not_implemented": "Upgrade feature is not implemented yet.\n\nPlease use CLI mode for now.",
   "uninstall_not_implemented": "Uninstall feature is not implemented yet.\n\nPlease use CLI mode for now.",
-
   "yes": "Yes",
   "no": "No",
   "confirm": "Confirm",
-  "cancel": "Cancel",
-  "back": "Back",
-  "next": "Next",
   "quit": "Quit",
   "press_enter": "Press Enter to continue",
   "enter_value": "Enter value",
-  "quit_prompt": "Press 'q' to quit",
-
   "title": "DPanel Installer",
   "step": "Step",
   "step_format": "Step %d/%d",
   "title_with_step": "🚀 DPanel Installer - Step %d/%d",
-  "os_label": "OS",
-
   "docker_choice_linux": "You can choose to install Docker automatically or use binary installation.",
   "docker_install_manual": "Please install Docker Desktop manually:",
   "docker_download_url": "https://www.docker.com/products/docker-desktop/",
   "restart_after_docker_install": "After installing Docker, please run the installer again.",
-
-  "help_navigation": "↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit",
-  "help_navigation_with_back": "↑/↓ Navigate | Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit",
-  "help_input": "Enter Confirm | Esc/Backspace Back | q/Ctrl+C Quit"
+  "tls_config": "TLS Configuration",
+  "enable_tls_desc": "Enable TLS encryption for secure connection",
+  "disable_tls_desc": "Disable TLS for plain connection (not recommended)",
+  "ssh_host": "SSH Host",
+  "confirm_desc": "Proceed with the installation",
+  "cancel_desc": "Go back to modify settings",
+  "unknown_step": "Unknown Step"
 }
