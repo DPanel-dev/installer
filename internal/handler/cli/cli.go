@@ -6,6 +6,7 @@ import (
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/handler"
+	"github.com/dpanel-dev/installer/internal/types"
 )
 
 // HelpError 表示用户请求帮助
@@ -188,18 +189,18 @@ func parseFlags(args []string) ([]config.Option, error) {
 
 	// Docker 连接
 	switch dockerType {
-	case config.DockerConnLocal:
+	case types.DockerConnLocal:
 		if dockerSock != "" {
 			opts = append(opts, config.WithDockerLocal(dockerSock))
 		} else {
 			opts = append(opts, config.WithDockerLocal(""))
 		}
-	case config.DockerConnTCP:
+	case types.DockerConnTCP:
 		opts = append(opts, config.WithDockerTCP(dockerHost, 2376))
 		if tlsEnabled {
-			opts = append(opts, config.WithDockerTLS(true, tlsPath, "", ""))
+			opts = append(opts, config.WithDockerTLS(true))
 		}
-	case config.DockerConnSSH:
+	case types.DockerConnSSH:
 		opts = append(opts, config.WithDockerSSH(dockerHost, 22, sshUser))
 		if sshPassword != "" {
 			opts = append(opts, config.WithSSHAuth(sshPassword, ""))

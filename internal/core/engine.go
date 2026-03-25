@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/types"
 )
 
 // Engine handles the installation process
@@ -32,11 +33,11 @@ func (e *Engine) Run() error {
 	)
 
 	switch e.Config.Action {
-	case config.ActionInstall:
+	case types.ActionInstall:
 		return e.install()
-	case config.ActionUpgrade:
+	case types.ActionUpgrade:
 		return e.upgrade()
-	case config.ActionUninstall:
+	case types.ActionUninstall:
 		return e.uninstall()
 	default:
 		return fmt.Errorf("unknown action: %s", e.Config.Action)
@@ -53,7 +54,7 @@ func (e *Engine) install() error {
 	}
 
 	// Build and execute command
-	if e.Config.InstallType == InstallTypeContainer {
+	if e.Config.InstallType == types.InstallTypeContainer {
 		return e.installContainer()
 	}
 	return e.installBinary()
@@ -74,7 +75,7 @@ func (e *Engine) upgrade() error {
 	}
 
 	// Perform upgrade based on installation type
-	if e.Config.InstallType == InstallTypeContainer {
+	if e.Config.InstallType == types.InstallTypeContainer {
 		return e.upgradeContainer()
 	}
 	return e.upgradeBinary()
@@ -90,7 +91,7 @@ func (e *Engine) uninstall() error {
 	}
 
 	// Perform uninstall based on installation type
-	if e.Config.InstallType == InstallTypeContainer {
+	if e.Config.InstallType == types.InstallTypeContainer {
 		return e.uninstallContainer()
 	}
 	return e.uninstallBinary()
@@ -101,7 +102,7 @@ func (e *Engine) checkEnvironment() error {
 	slog.Info("Checking environment")
 
 	// Check Docker/Podman availability
-	if e.Config.InstallType == InstallTypeContainer {
+	if e.Config.InstallType == types.InstallTypeContainer{
 		if err := e.checkDocker(); err != nil {
 			return err
 		}
@@ -138,7 +139,7 @@ func (e *Engine) checkDocker() error {
 	}
 
 	// Test docker service if it's the configured type
-	if e.Config.DockerConnType == DockerConnLocal {
+	if e.Config.DockerConnType == types.DockerConnLocal {
 		// Try docker first
 		if dockerExists {
 			slog.Info("Testing Docker service")
@@ -201,11 +202,11 @@ func (e *Engine) checkDockerConnection() error {
 	slog.Info("Checking docker connection", "type", e.Config.DockerConnType)
 
 	switch e.Config.DockerConnType {
-	case config.DockerConnLocal:
+	case types.DockerConnLocal:
 		return e.checkLocalConnection()
-	case config.DockerConnTCP:
+	case types.DockerConnTCP:
 		return e.checkTCPConnection()
-	case config.DockerConnSSH:
+	case types.DockerConnSSH:
 		return e.checkSSHConnection()
 	default:
 		return fmt.Errorf("unknown docker connection type: %s", e.Config.DockerConnType)
@@ -544,7 +545,7 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	}
 
 	// Ports
-	if cfg.Edition == EditionStandard {
+	if cfg.Edition == types.EditionStandard {
 		parts = append(parts, "-p", "80:80", "-p", "443:443")
 	}
 	if cfg.Port > 0 {

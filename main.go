@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -82,14 +81,15 @@ func setupLogger() {
 	logPath := filepath.Join(execDir, "run.log")
 
 	// Create log file
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		slog.Error("Failed to open log file", "path", logPath, "error", err)
 		return
 	}
 
 	// Setup slog with JSON file output
-	fileHandler := slog.NewJSONHandler(io.MultiWriter(os.Stdout, logFile), &slog.HandlerOptions{
+	//io.MultiWriter(os.Stdout, logFile)
+	fileHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})
 

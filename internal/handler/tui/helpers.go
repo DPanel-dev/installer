@@ -85,6 +85,13 @@ var (
 	infoStyle = lipgloss.NewStyle().
 			Foreground(infoColor).
 			Bold(true)
+
+	warningBoxStyle = lipgloss.NewStyle().
+			Foreground(warningColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(warningColor)
 )
 
 // ========== 渲染辅助函数 ==========

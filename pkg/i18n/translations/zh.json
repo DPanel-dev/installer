@@ -1,6 +1,7 @@
 {
   "select_language": "选择语言",
   "select_action": "选择操作",
+  "no_registry_available": "无法连接到镜像仓库，请检查网络连接。安装和升级功能暂时不可用，仅可执行卸载操作。",
   "install_panel": "安装面板",
   "install_panel_desc": "安装新的 DPanel 实例",
   "upgrade_panel": "升级面板",

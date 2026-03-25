@@ -1,6 +1,7 @@
 {
   "select_language": "Select Language",
   "select_action": "Select Action",
+  "no_registry_available": "Cannot connect to container registry. Please check your network connection. Install and upgrade features are temporarily unavailable, only uninstall is allowed.",
   "install_panel": "Install Panel",
   "install_panel_desc": "Install a new DPanel instance",
   "upgrade_panel": "Upgrade Panel",

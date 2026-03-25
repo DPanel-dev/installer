@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/dpanel-dev/installer/internal/config"
-	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler"
+	"github.com/dpanel-dev/installer/internal/types"
 	"github.com/dpanel-dev/installer/pkg/i18n"
 )
 
@@ -330,6 +330,17 @@ func (t *TUI) renderContent() string {
 	var b strings.Builder
 	b.WriteString("\n")
 
+	// 网络不可用警告（仅在操作选择步骤显示）
+	if t.step == StepAction && !t.cfg.CanInstall() {
+		width := min(t.width, 80)
+		if width < 40 {
+			width = 40
+		}
+		warningText := i18n.T("no_registry_available")
+		b.WriteString(warningBoxStyle.Width(width).Render("⚠️ " + warningText))
+		b.WriteString("\n\n")
+	}
+
 	switch t.currentDef.Type {
 	case StepTypeMenu:
 		b.WriteString(t.renderMenu())
@@ -441,7 +452,7 @@ func (t *TUI) renderConfirm() string {
 		{i18n.T("data_path"), cfg.DataPath},
 	}
 
-	if cfg.InstallType == core.InstallTypeContainer {
+	if cfg.InstallType == types.InstallTypeContainer {
 		details = append(details, [2]string{i18n.T("docker_connection"), cfg.DockerConnType})
 		if cfg.HTTPProxy != "" {
 			details = append(details, [2]string{i18n.T("proxy_address"), cfg.HTTPProxy})

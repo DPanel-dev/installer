@@ -4,7 +4,7 @@ import (
 	"strconv"
 
 	"github.com/dpanel-dev/installer/internal/config"
-	"github.com/dpanel-dev/installer/internal/core"
+	"github.com/dpanel-dev/installer/internal/types"
 	"github.com/dpanel-dev/installer/pkg/i18n"
 )
 
@@ -37,10 +37,11 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "select_action",
 		Options: func(cfg *config.Config) []OptionItem {
+			canInstall := cfg.CanInstall()
 			return []OptionItem{
-				{Value: config.ActionInstall, Label: "install_panel", Description: "install_panel_desc"},
-				{Value: config.ActionUpgrade, Label: "upgrade_panel", Description: "upgrade_panel_desc"},
-				{Value: config.ActionUninstall, Label: "uninstall_panel", Description: "uninstall_panel_desc"},
+				{Value: types.ActionInstall, Label: "install_panel", Description: "install_panel_desc", Disabled: !canInstall},
+				{Value: types.ActionUpgrade, Label: "upgrade_panel", Description: "upgrade_panel_desc", Disabled: !canInstall},
+				{Value: types.ActionUninstall, Label: "uninstall_panel", Description: "uninstall_panel_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -55,23 +56,23 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "install_method",
 		Options: func(cfg *config.Config) []OptionItem {
-			if cfg.IsDockerAvailable() {
+			if cfg.IsContainerAvailable() {
 				return []OptionItem{
-					{Value: core.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
-					{Value: core.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
+					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
+					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 				}
 			}
 			// Docker 不可用 - Linux
 			if cfg.Env.OS == "linux" {
 				return []OptionItem{
-					{Value: core.InstallTypeContainer, Label: "container_install", Description: "install_docker_linux_desc"},
-					{Value: core.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
+					{Value: types.InstallTypeContainer, Label: "container_install", Description: "install_docker_linux_desc"},
+					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 				}
 			}
 			// Windows/macOS Docker 不可用
 			return []OptionItem{
-				{Value: core.InstallTypeContainer, Label: "container_install", Description: "container_install_disabled", Disabled: true},
-				{Value: core.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
+				{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_disabled", Disabled: true},
+				{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -87,9 +88,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_version",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: core.VersionCommunity, Label: "community_edition", Description: "community_edition_desc"},
-				{Value: core.VersionPro, Label: "professional_edition", Description: "professional_edition_desc"},
-				{Value: core.VersionDev, Label: "development_edition", Description: "development_edition_desc"},
+				{Value: types.VersionCommunity, Label: "community_edition", Description: "community_edition_desc"},
+				{Value: types.VersionPro, Label: "professional_edition", Description: "professional_edition_desc"},
+				{Value: types.VersionDev, Label: "development_edition", Description: "development_edition_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -105,11 +106,11 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_edition",
 		Options: func(cfg *config.Config) []OptionItem {
 			items := []OptionItem{
-				{Value: core.EditionStandard, Label: "standard_edition", Description: "standard_edition_desc"},
-				{Value: core.EditionLite, Label: "lite_edition", Description: "lite_edition_desc"},
+				{Value: types.EditionStandard, Label: "standard_edition", Description: "standard_edition_desc"},
+				{Value: types.EditionLite, Label: "lite_edition", Description: "lite_edition_desc"},
 			}
 			// 二进制安装只支持精简版
-			if cfg.InstallType == core.InstallTypeBinary {
+			if cfg.InstallType == types.InstallTypeBinary {
 				items[0].Disabled = true
 				items[0].Description = "binary_install_edition_warning"
 			}
@@ -120,7 +121,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			return nil
 		},
 		Next: func(cfg *config.Config) Step {
-			if cfg.InstallType == core.InstallTypeBinary {
+			if cfg.InstallType == types.InstallTypeBinary {
 				return StepContainerName
 			}
 			return StepOS
@@ -133,8 +134,8 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_os",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: core.OSAlpine, Label: "alpine", Description: "alpine_desc"},
-				{Value: core.OSDebian, Label: "debian", Description: "debian_desc"},
+				{Value: types.OSAlpine, Label: "alpine", Description: "alpine_desc"},
+				{Value: types.OSDebian, Label: "debian", Description: "debian_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -150,8 +151,8 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_registry",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: core.RegistryHub, Label: "docker_hub", Description: "docker_hub_desc"},
-				{Value: core.RegistryAliyun, Label: "aliyun", Description: "aliyun_desc"},
+				{Value: types.RegistryHub, Label: "docker_hub", Description: "docker_hub_desc"},
+				{Value: types.RegistryAliyun, Label: "aliyun", Description: "aliyun_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -167,9 +168,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "docker_connection",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: core.DockerConnLocal, Label: "local_sock", Description: "local_sock_desc"},
-				{Value: core.DockerConnTCP, Label: "remote_tcp", Description: "remote_tcp_desc"},
-				{Value: core.DockerConnSSH, Label: "remote_ssh", Description: "remote_ssh_desc"},
+				{Value: types.DockerConnLocal, Label: "local_sock", Description: "local_sock_desc"},
+				{Value: types.DockerConnTCP, Label: "remote_tcp", Description: "remote_tcp_desc"},
+				{Value: types.DockerConnSSH, Label: "remote_ssh", Description: "remote_ssh_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -178,9 +179,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Next: func(cfg *config.Config) Step {
 			switch cfg.DockerConnType {
-			case core.DockerConnTCP:
+			case types.DockerConnTCP:
 				return StepDockerConfig
-			case core.DockerConnSSH:
+			case types.DockerConnSSH:
 				return StepSSHConfig
 			default:
 				return StepContainerName
