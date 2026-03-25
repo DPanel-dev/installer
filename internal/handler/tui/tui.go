@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/dpanel-dev/installer/internal/install"
+	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/core"
+	"github.com/dpanel-dev/installer/internal/handler"
 	"github.com/dpanel-dev/installer/pkg/i18n"
 )
 
@@ -19,7 +22,7 @@ type Step int
 const (
 	StepLanguage Step = iota
 	StepAction
-	StepInstallType // Merged environment check with install type selection
+	StepInstallType // Merged environment check with config type selection
 	StepVersion
 	StepEdition
 	StepOS
@@ -69,8 +72,8 @@ var (
 	warningColor = lipgloss.Color("#FAAD14") // Warning amber
 	infoColor    = lipgloss.Color("#1890FF") // Info blue
 
-	mutedColor   = lipgloss.Color("#8C8C8C") // Muted gray
-	lightColor   = lipgloss.Color("#BFBFBF") // Light gray
+	mutedColor = lipgloss.Color("#8C8C8C") // Muted gray
+	lightColor = lipgloss.Color("#BFBFBF") // Light gray
 
 	bgColor         = lipgloss.Color("#141414") // Dark background
 	bgLightColor    = lipgloss.Color("#1F1F1F") // Lighter background
@@ -181,18 +184,18 @@ var (
 
 	// Disabled style for unavailable options
 	menuItemDisabledStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
-			PaddingLeft(2).
-			MarginBottom(0).
-			Italic(true)
+				Foreground(mutedColor).
+				PaddingLeft(2).
+				MarginBottom(0).
+				Italic(true)
 
 	menuItemSelectedDisabledStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
-			Background(bgInputColor).
-			PaddingLeft(2).
-			PaddingRight(1).
-			MarginBottom(0).
-			Italic(true)
+					Foreground(mutedColor).
+					Background(bgInputColor).
+					PaddingLeft(2).
+					PaddingRight(1).
+					MarginBottom(0).
+					Italic(true)
 )
 
 // Helper methods for responsive styling
@@ -220,21 +223,21 @@ func (m model) getResponsiveWidth(maxWidth int) int {
 
 // Model represents the TUI state
 type model struct {
-	config          *install.Config
-	step            Step
-	cursor          int
-	choices         []string
-	descriptions    []string
-	disabled        []bool // Track which choices are disabled
-	inputValue      string
-	width           int
-	height          int
-	quitting        bool
-	error           error
-	envCheck        *EnvironmentCheck
-	dockerInstalled bool
-	osType          string // "windows", "darwin", "linux"
-	manualDockerInstall bool // User chose to install Docker manually
+	config              *config.Config
+	step                Step
+	cursor              int
+	choices             []string
+	descriptions        []string
+	disabled            []bool // Track which choices are disabled
+	inputValue          string
+	width               int
+	height              int
+	quitting            bool
+	error               error
+	envCheck            *EnvironmentCheck
+	dockerInstalled     bool
+	osType              string // "windows", "darwin", "linux"
+	manualDockerInstall bool   // User chose to config Docker manually
 }
 
 // EnvironmentCheck holds environment check results
@@ -248,7 +251,13 @@ type EnvironmentCheck struct {
 
 // InitialModel creates the initial TUI model
 func InitialModel() model {
-	cfg := install.NewConfig()
+	// Create config with environment detection and smart defaults
+	cfg, err := config.NewConfig()
+	if err != nil {
+		// Fallback to empty config if error
+		cfg, _ = config.NewConfig()
+	}
+
 	m := model{
 		config: cfg,
 		step:   StepLanguage,
@@ -503,8 +512,8 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 
 		selection := m.getSelectedInstallType()
-		if selection == "install_docker" {
-			// User wants to install Docker (Linux only)
+		if selection == core.InstallTypeInstallDocker {
+			// User wants to config Docker (Linux only)
 			if m.osType == "linux" {
 				// Execute Docker installation script
 				if err := m.installDockerLinux(); err != nil {
@@ -517,12 +526,12 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 					m.setupInstallTypeChoices()
 				}
 			}
-		} else if selection == "binary" {
-			m.config.InstallType = "binary"
+		} else if selection == core.InstallTypeBinary {
+			m.config.InstallType = core.InstallTypeBinary
 			m.step = StepVersion
 			m.setupVersionChoices()
-		} else if selection == "container" {
-			m.config.InstallType = "container"
+		} else if selection == core.InstallTypeContainer {
+			m.config.InstallType = core.InstallTypeContainer
 			m.step = StepVersion
 			m.setupVersionChoices()
 		}
@@ -541,7 +550,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 
 		m.config.Edition = m.getSelectedEdition()
 		// For binary installation, skip OS and registry selection
-		if m.config.InstallType == "binary" {
+		if m.config.InstallType == core.InstallTypeBinary {
 			m.step = StepContainerName
 			m.inputValue = "dpanel"
 		} else {
@@ -555,20 +564,31 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.setupRegistryChoices()
 
 	case StepRegistry:
-		m.config.ImageRegistry = m.getSelectedRegistry()
+		// Apply registry option
+		_ = m.config.ApplyOptions(config.WithRegistry(m.getSelectedRegistry()))
 		m.step = StepDockerConnection
 		m.setupDockerConnectionChoices()
 
 	case StepDockerConnection:
-		m.config.DockerConnection.Type = m.getSelectedDockerConnection()
-		if m.config.InstallType == "container" {
-			if m.config.DockerConnection.Type == "local" {
+		// Apply Docker connection type option
+		connType := m.getSelectedDockerConnection()
+		switch connType {
+		case core.DockerConnLocal:
+			_ = m.config.ApplyOptions(config.WithDockerLocal(""))
+		case core.DockerConnTCP:
+			_ = m.config.ApplyOptions(config.WithDockerTCP("127.0.0.1", 2376))
+		case core.DockerConnSSH:
+			_ = m.config.ApplyOptions(config.WithDockerSSH("127.0.0.1", 22, ""))
+		}
+
+		if m.config.InstallType == core.InstallTypeContainer {
+			if m.config.DockerConnType == core.DockerConnLocal {
 				m.step = StepContainerName
 				m.inputValue = "dpanel"
-			} else if m.config.DockerConnection.Type == "tcp" {
+			} else if m.config.DockerConnType == core.DockerConnTCP {
 				m.step = StepDockerConfig
 				m.inputValue = "127.0.0.1:2376"
-			} else if m.config.DockerConnection.Type == "ssh" {
+			} else if m.config.DockerConnType == core.DockerConnSSH {
 				m.step = StepDockerConfig
 				m.inputValue = "127.0.0.1:22"
 			}
@@ -578,12 +598,14 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		}
 
 	case StepDockerConfig:
-		if m.config.DockerConnection.Type == "tcp" {
-			m.config.DockerConnection.Host = m.inputValue
+		if m.config.DockerConnType == core.DockerConnTCP {
+			// Parse host:port
+			_ = m.config.ApplyOptions(config.WithDockerTCP(m.inputValue, 2376))
 			m.step = StepTLSConfig
 			m.setupTLSChoices()
-		} else if m.config.DockerConnection.Type == "ssh" {
-			m.config.DockerConnection.Host = m.inputValue
+		} else if m.config.DockerConnType == core.DockerConnSSH {
+			// Parse host:port
+			_ = m.config.ApplyOptions(config.WithDockerSSH(m.inputValue, 22, ""))
 			m.step = StepSSHConfig
 			m.inputValue = ""
 		} else {
@@ -593,21 +615,21 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 
 	case StepTLSConfig:
 		if m.cursor == 0 {
-			m.config.DockerConnection.TLSEnabled = true
+			_ = m.config.ApplyOptions(config.WithDockerTLS(true, "", "", ""))
 			m.step = StepContainerName
 			m.inputValue = "dpanel"
 		} else {
-			m.config.DockerConnection.TLSEnabled = false
+			_ = m.config.ApplyOptions(config.WithDockerTLS(false, "", "", ""))
 			m.step = StepContainerName
 			m.inputValue = "dpanel"
 		}
 
 	case StepSSHConfig:
-		if m.config.DockerConnection.SSHUser == "" {
-			m.config.DockerConnection.SSHUser = m.inputValue
+		if m.config.DockerSSHUser == "" {
+			_ = m.config.ApplyOptions(config.WithDockerSSH(m.config.DockerSSHHost, m.config.DockerSSHPort, m.inputValue))
 			m.inputValue = ""
-		} else if m.config.DockerConnection.SSHPass == "" && m.config.DockerConnection.SSHKey == "" {
-			m.config.DockerConnection.SSHPass = m.inputValue
+		} else if m.config.DockerSSHPass == "" && m.config.DockerSSHKey == "" {
+			_ = m.config.ApplyOptions(config.WithSSHAuth(m.inputValue, ""))
 			m.step = StepContainerName
 			m.inputValue = "dpanel"
 		} else {
@@ -621,8 +643,11 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.inputValue = ""
 
 	case StepPort:
-		if port, err := install.ParsePort(m.inputValue); err == nil {
-			m.config.Port = port
+		// Parse port from input
+		if m.inputValue != "" {
+			if port, err := strconv.Atoi(m.inputValue); err == nil {
+				m.config.Port = port
+			}
 		}
 		m.step = StepDataPath
 		m.inputValue = "/home/dpanel"
@@ -633,7 +658,7 @@ func (m model) handleEnter() (tea.Model, tea.Cmd) {
 		m.inputValue = ""
 
 	case StepProxy:
-		m.config.Proxy = m.inputValue
+		_ = m.config.ApplyOptions(config.WithHTTPProxy(m.inputValue))
 		m.step = StepDNS
 		m.inputValue = ""
 
@@ -697,11 +722,30 @@ func (m model) getStepTitle() string {
 // installMsg is a message to trigger installation
 type installMsg struct{}
 
-// StartTUI starts the TUI application
-func StartTUI() error {
-	p := tea.NewProgram(InitialModel(), tea.WithAltScreen())
-	_, err := p.Run()
-	return err
+// StartTUI starts the TUI application with given Config
+func StartTUI(cfg *config.Config) error {
+	// Create model with provided config
+	m := NewModelWithConfig(cfg)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	finalModel, err := p.Run()
+	if err != nil {
+		return err
+	}
+
+	// Get final config and run
+	finalCfg := finalModel.(model).config
+	engine := core.NewEngine(finalCfg)
+	return engine.Run()
+}
+
+// NewModelWithConfig creates a new model with given Config
+func NewModelWithConfig(cfg *config.Config) model {
+	return model{
+		config: cfg,
+		step:   StepLanguage,
+		width:  80,
+		height: 24,
+	}
 }
 
 // goBack handles going back to the previous step
@@ -738,15 +782,15 @@ func (m model) goBack() (tea.Model, tea.Cmd) {
 		m.step = StepDockerConfig
 		m.inputValue = ""
 	case StepSSHConfig:
-		if m.config.DockerConnection.Type == "tcp" {
+		if m.config.DockerConnType == core.DockerConnTCP {
 			m.step = StepDockerConfig
 			m.inputValue = ""
 		} else {
 			m.step = StepDockerConfig
 		}
 	case StepContainerName:
-		if m.config.InstallType == "container" {
-			if m.config.DockerConnection.Type == "local" {
+		if m.config.InstallType == core.InstallTypeContainer {
+			if m.config.DockerConnType == core.DockerConnLocal {
 				m.step = StepDockerConnection
 				m.setupDockerConnectionChoices()
 			} else {
@@ -831,7 +875,7 @@ func (m *model) setupInstallTypeChoices() {
 	} else {
 		// Docker not available - show both options, but container is disabled
 		if m.osType == "linux" {
-			// Linux: show install docker option instead of container install
+			// Linux: show config docker option instead of container config
 			m.choices = []string{
 				i18n.T("install_docker"),
 				i18n.T("binary_install"),
@@ -842,7 +886,7 @@ func (m *model) setupInstallTypeChoices() {
 			}
 			m.disabled = []bool{false, false}
 		} else {
-			// Windows/macOS: show container install as disabled
+			// Windows/macOS: show container config as disabled
 			m.choices = []string{
 				i18n.T("container_install"),
 				i18n.T("binary_install"),
@@ -881,7 +925,7 @@ func (m *model) setupEditionChoices() {
 	}
 
 	// Binary installation only supports Lite Edition
-	if m.config.InstallType == "binary" {
+	if m.config.InstallType == core.InstallTypeBinary {
 		m.disabled = []bool{true, false} // Disable Standard Edition for binary installation
 	} else {
 		m.disabled = []bool{false, false}
@@ -950,7 +994,7 @@ func (m *model) setupConfirmChoices() {
 // Selection helper methods
 
 func (m model) getSelectedAction() string {
-	actions := []string{"install", "upgrade", "uninstall"}
+	actions := []string{core.ActionInstall, core.ActionUpgrade, core.ActionUninstall}
 	return actions[m.cursor]
 }
 
@@ -964,42 +1008,42 @@ func (m model) getSelectedInstallType() string {
 
 	switch choice {
 	case i18n.T("install_docker"):
-		return "install_docker"
+		return core.InstallTypeInstallDocker
 	case i18n.T("container_install"):
-		return "container"
+		return core.InstallTypeContainer
 	case i18n.T("binary_install"):
-		return "binary"
+		return core.InstallTypeBinary
 	default:
 		// Fallback
 		if len(m.choices) == 1 {
-			return "binary"
+			return core.InstallTypeBinary
 		}
-		return "container"
+		return core.InstallTypeContainer
 	}
 }
 
 func (m model) getSelectedVersion() string {
-	versions := []string{"community", "pro", "dev"}
+	versions := []string{core.VersionCommunity, core.VersionPro, core.VersionDev}
 	return versions[m.cursor]
 }
 
 func (m model) getSelectedEdition() string {
-	editions := []string{"standard", "lite"}
+	editions := []string{core.EditionStandard, core.EditionLite}
 	return editions[m.cursor]
 }
 
 func (m model) getSelectedOS() string {
-	osTypes := []string{"debian", "alpine"}
+	osTypes := []string{core.OSDebian, core.OSAlpine}
 	return osTypes[m.cursor]
 }
 
 func (m model) getSelectedRegistry() string {
-	registries := []string{"hub", "aliyun"}
+	registries := []string{core.RegistryHub, core.RegistryAliyun}
 	return registries[m.cursor]
 }
 
 func (m model) getSelectedDockerConnection() string {
-	types := []string{"local", "tcp", "ssh"}
+	types := []string{core.DockerConnLocal, core.DockerConnTCP, core.DockerConnSSH}
 	return types[m.cursor]
 }
 
@@ -1056,16 +1100,16 @@ func (m model) renderConfirm() string {
 		{i18n.T("select_version"), cfg.Version},
 		{i18n.T("select_edition"), cfg.Edition},
 		{i18n.T("select_os"), cfg.OS},
-		{i18n.T("select_registry"), cfg.ImageRegistry},
+		{i18n.T("select_registry"), cfg.Registry},
 		{i18n.T("container_name"), cfg.ContainerName},
 		{i18n.T("access_port"), fmt.Sprintf("%d", cfg.Port)},
 		{i18n.T("data_path"), cfg.DataPath},
 	}
 
-	if cfg.InstallType == "container" {
-		details = append(details, []string{i18n.T("docker_connection"), cfg.DockerConnection.Type})
-		if cfg.Proxy != "" {
-			details = append(details, []string{i18n.T("proxy_address"), cfg.Proxy})
+	if cfg.InstallType == core.InstallTypeContainer {
+		details = append(details, []string{i18n.T("docker_connection"), cfg.DockerConnType})
+		if cfg.HTTPProxy != "" {
+			details = append(details, []string{i18n.T("proxy_address"), cfg.HTTPProxy})
 		}
 		if cfg.DNS != "" {
 			details = append(details, []string{i18n.T("dns_address"), cfg.DNS})
@@ -1127,7 +1171,7 @@ func (m *model) runEnvironmentCheck() {
 	m.dockerInstalled = m.envCheck.DockerAvailable || m.envCheck.PodmanAvailable
 }
 
-// renderInstallType renders the install type selection with environment info
+// renderInstallType renders the config type selection with environment info
 func (m model) renderInstallType() string {
 	var s strings.Builder
 
@@ -1186,7 +1230,7 @@ func (m model) renderEdition() string {
 	var s strings.Builder
 
 	// Show warning for binary installation
-	if m.config.InstallType == "binary" {
+	if m.config.InstallType == core.InstallTypeBinary {
 		warningText := i18n.T("binary_install_edition_warning")
 		boxWidth := m.getResponsiveWidth(76)
 		warningBoxWithWidth := warningBoxStyle.Copy().Width(boxWidth)
@@ -1200,11 +1244,41 @@ func (m model) renderEdition() string {
 	return s.String()
 }
 
-// renderInstallType renders the install type selection with environment info
+// renderInstallType renders the config type selection with environment info
 
 // installDockerLinux installs Docker on Linux using the official script
 func (m *model) installDockerLinux() error {
-	// Download and execute Docker's official install script
+	// Download and execute Docker's official config script
 	// This is a placeholder - actual implementation would download and run the script
 	return fmt.Errorf("docker installation script not implemented yet")
 }
+
+// TUI 实现 handler.Handler 接口
+type TUI struct {
+	// 预留扩展字段
+}
+
+// Option 配置选项函数
+type Option func(*TUI)
+
+// NewTUI 创建 TUI handler
+func NewTUI(opts ...Option) *TUI {
+	t := &TUI{}
+	for _, opt := range opts {
+		opt(t)
+	}
+	return t
+}
+
+// Name 实现 handler.Handler 接口
+func (t *TUI) Name() string {
+	return "tui"
+}
+
+// Run 实现 handler.Handler 接口
+func (t *TUI) Run(cfg *config.Config) error {
+	return StartTUI(cfg)
+}
+
+// 确保类型实现了接口
+var _ handler.Handler = (*TUI)(nil)

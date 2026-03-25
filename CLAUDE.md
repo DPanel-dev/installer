@@ -5,46 +5,145 @@
 ## 项目概述
 
 DPanel 安装器 - 用于安装、升级和卸载 DPanel 容器和二进制文件的工具。安装器支持两种模式：
-- **TUI 模式**：通过 `--mode tui` 启动的交互式终端 UI 向导
-- **CLI 模式**：通过命令行标志进行程序化调用（默认模式）
+- **TUI 模式**：默认启动的交互式终端 UI 向导（无参数时）
+- **CLI 模式**：通过命令行标志进行程序化调用（有参数时）
 
-**架构原则**：TUI 模式最终路由回 CLI 命令+参数的形式执行安装。
+**架构原则**：
+1. **单一职责**：main.go 只负责根据参数分发到合适的配置源
+2. **配置驱动**：TUI 和 CLI 都修改同一个 Config 对象
+3. **统一执行**：所有配置源最终都通过 Config.Run() 执行安装
+4. **可扩展**：通过 ConfigSource 接口可以轻松添加新的配置源（如配置文件、API 等）
 
 ## 构建命令
 
+根据当前系统构建到 runtime 目录下
+
 ```bash
-# 构建安装器（输出到 runtime 目录）
-go build -o runtime/dpanel-installer.exe main.go
+# 构建
+go build -o runtime/dpanel-installer main.go
 
 # 构建带版本信息
-go build -ldflags "-X main.version=1.0.0 -X main.commit=abc123 -X main.date=2025-03-22" -o runtime/dpanel-installer.exe main.go
+go build -ldflags "-X main.version=1.0.0 -X main.commit=abc123 -X main.date=2025-03-22" \
+  -o runtime/dpanel-installer main.go
+```
 
-# 运行 TUI 模式（交互式向导）
-./runtime/dpanel-installer.exe --mode tui
+## 使用示例
 
-# 运行 CLI 模式（默认）
-./runtime/dpanel-installer.exe --action install --version community --edition lite
+### TUI 模式（默认）
+```bash
+# 无参数：启动交互式 TUI 向导
+./dpanel-installer
 
-# 查看帮助
-./runtime/dpanel-installer.exe --help
+# 显式指定 TUI 模式
+./dpanel-installer --mode tui
+```
+
+### CLI 模式
+```bash
+# 显示帮助
+./dpanel-installer --help
+./dpanel-installer -h
+
+# 显示版本
+./dpanel-installer --version
+./dpanel-installer -v
+
+# 快速安装（使用默认值）
+./dpanel-installer --action config
+
+# 完整配置安装
+./dpanel-installer \
+  --action config \
+  --dpanel-version community \
+  --edition lite \
+  --config-type container \
+  --port 8080 \
+  --container-name my-dpanel
+
+# 强制 CLI 模式（即使只有一个参数）
+./dpanel-installer --mode cli --action config
 ```
 
 ## 架构
 
 ### 入口点 (`main.go`)
-- 使用 Cobra 构建命令结构
-- **默认行为**：显示 CLI 帮助信息
-- **TUI 模式**：通过 `--mode tui` 启动，加载语言包
-- **CLI 模式**：通过命令行标志配置，直接执行安装
+
+**单一职责：分发器** - main.go 只负责根据参数选择合适的配置源，不处理任何业务逻辑。
+
+#### 行为逻辑
+
+```
+无参数 → TUI 模式（默认）
+有参数 → CLI 模式（如 --help, --version, --action 等）
+--mode tui → 强制 TUI 模式
+--mode cli → 强制 CLI 模式
+```
+
+#### 源选择流程
+
+1. **检查显式 --mode 参数**
+   - `--mode tui` → TUI 配置源
+   - `--mode cli` → CLI 配置源
+
+2. **检查各配置源的 CanHandle()**
+   - CLI.CanHandle(): 有任何参数时返回 true（除了 `--mode tui`）
+   - TUI.CanHandle(): 只在 `--mode tui` 时返回 true
+
+3. **返回默认配置源**
+   - 默认：TUI 配置源
+
+#### 实现要点
+
+- **简洁性**：main.go 只有约 60 行代码
+- **单一职责**：只负责分发，不处理业务逻辑
 - **日志记录**：使用 `slog` 将 JSON 日志写入程序同级目录下的 `run.log`
-- **CLI 帮助信息**：全部使用英文
+- **版本信息**：通过 ldflags 注入，传递给 CLI 包用于显示
+
+#### 代码示例
+
+```go
+func run() error {
+    args := os.Args[1:]
+
+    // Create default Config
+    cfg, err := install.NewConfig()
+    if err != nil {
+        return err
+    }
+
+    // Initialize source registry with TUI as default
+    registry := source.NewRegistry()
+    registry.RegisterDefault(tui.NewTUIConfigSource()) // TUI is default
+    registry.Register(cli.NewCLI())
+
+    // Detect and run appropriate source
+    selectedSource := registry.Detect(args)
+    return selectedSource.Run(cfg, args)
+}
+```
 
 ### 核心组件
 
+**`internal/install/constants.go`**：配置常量定义
+- 所有配置值的命名常量（操作类型、安装类型、版本、版本类型、系统、镜像源、Docker 连接类型等）
+- 常量验证函数（`IsValidAction()`, `IsValidInstallType()` 等）
+- 有效值数组（`ValidActions`, `ValidInstallTypes` 等）
+- **重要**：所有代码必须使用这些常量，禁止硬编码字符串字面量
+
 **`internal/install/config.go`**：安装配置
-- `Config` 结构体包含所有安装配置项
-- `DockerConnection` 结构体包含 Docker/Podman 连接配置
-- `NewConfig()` 函数创建带默认值的配置
+- `Config` 结构体包含所有安装配置项（扁平化设计，无嵌套指针）
+- `EnvCheck` 结构体包含环境检测结果
+- `NewConfig()` 函数：执行环境检测 + 应用智能默认值 + 应用用户选项
+- `detectEnvironment()` 方法：自动检测系统信息、Docker/Podman、网络连通性、现有安装
+- `applySmartDefaults()` 方法：根据环境设置最优默认值
+- `GetImageName()` 方法：根据配置构建完整的镜像名称
+- `Run()` 方法：验证配置并执行安装
+
+**`internal/install/options.go`**：配置选项模式（Option Pattern）
+- `Option` 类型：`func(*Config) error`
+- 所有 `With*()` 函数用于修改配置
+- 内置验证逻辑，确保配置值的有效性和兼容性
+- 支持链式调用：`install.NewConfig(install.WithAction(...), install.WithVersion(...))`
 
 **`internal/install/engine.go`**：安装引擎
 - `Engine` 结构体包装 `Config` 并执行操作
@@ -61,6 +160,22 @@ go build -ldflags "-X main.version=1.0.0 -X main.commit=abc123 -X main.date=2025
 - `buildDockerCommand()`：构建 docker/podman run 命令
 - `buildImageName()`：根据配置构建镜像名称
 - `executeCommand()`：执行 shell 命令
+
+**`internal/cli/cli.go`**：CLI 配置源
+- 实现 `source.ConfigSource` 接口
+- **CanHandle()**: 有任何参数时返回 true（除了 `--mode tui`）
+- **Run()**: 解析命令行参数，应用到 Config，执行安装
+- **特殊处理**:
+  - `--help` / `-h`: 显示帮助信息后退出
+  - `--version` / `-v`: 显示版本信息后退出
+- **标志定义**:
+  - `--action`: 操作类型（install, upgrade, uninstall）
+  - `--dpanel-version`: DPanel 版本（community, pro, dev）
+  - `--edition`: 版本类型（standard, lite）
+  - `--install-type`: 安装类型（container, binary）
+  - `--docker-type`: Docker 连接类型（local, tcp, ssh）
+  - 以及其他配置选项
+- **所有帮助信息使用英文**
 
 **`internal/ui/tui/tui.go`**：Bubble Tea TUI 实现
 - **全屏显示**：无边框，使用整个终端屏幕
@@ -118,23 +233,28 @@ go build -ldflags "-X main.version=1.0.0 -X main.commit=abc123 -X main.date=2025
 
 ```
 Config (install.Config)
-├── Action: "install" | "upgrade" | "uninstall"
+├── Action: install.ActionInstall | ActionUpgrade | ActionUninstall
 ├── Language: "zh" | "en" (仅 TUI 使用)
-├── InstallType: "container" | "binary"
-├── Version: "community" | "pro" | "dev"
-├── Edition: "standard" | "lite"
-├── OS: "alpine" | "debian"
-├── ImageRegistry: "hub" | "aliyun"
+├── InstallType: install.InstallTypeContainer | InstallTypeBinary | InstallTypeInstallDocker
+├── Version: install.VersionCommunity | VersionPro | VersionDev
+├── Edition: install.EditionStandard | EditionLite
+├── OS: install.OSAlpine | OSDebian
+├── ImageRegistry: install.RegistryHub | RegistryAliyun
 ├── ContainerName: string (默认 "dpanel")
 ├── Port: int (0 表示随机端口)
 ├── DataPath: string (默认 "/home/dpanel")
 ├── DockerConnection:
-│   ├── Type: "local" | "tcp" | "ssh"
+│   ├── Type: install.DockerConnLocal | DockerConnTCP | DockerConnSSH
 │   ├── SockPath (local)
 │   ├── Host, TLSEnabled, TLSPath (tcp)
 │   └── Host, SSHUser, SSHPass, SSHKey (ssh)
 └── Network: Proxy, DNS
 ```
+
+**重要说明**：
+- 所有配置字段使用 `internal/install/constants.go` 中定义的常量
+- 禁止在代码中硬编码字符串字面量（如 `"install"`, `"container"` 等）
+- 常量提供类型安全、编译时检查和 IDE 支持
 
 ## 日志和命令记录
 
@@ -866,6 +986,7 @@ docker run -d \
 - ✅ 最终执行命令的保存
 - ✅ Docker 命令构建
 - ✅ 支持远程 Docker 连接（TCP/SSH）
+- ✅ 配置常量系统（所有配置值使用命名常量）
 
 ### 待实现功能
 - ⏳ Upgrade/Uninstall 功能
@@ -877,15 +998,179 @@ docker run -d \
 
 ## 语言使用规范
 
+### 模式选择
+- **默认行为**：无参数时启动 TUI 模式
+- **有参数**：任何参数（如 `--help`, `--action` 等）启动 CLI 模式
+- **显式指定**：使用 `--mode tui` 或 `--mode cli` 强制指定模式
+
 ### CLI 模式
 - **所有帮助信息使用英文**
 - **所有错误消息使用英文**
 - **不加载语言包**
+- **适用于自动化脚本和程序化调用**
 
 ### TUI 模式
 - **第一步选择语言**
 - **所有界面文本使用语言包**
 - **支持英文和简体中文**
+- **适用于交互式安装和手动配置**
+
+## 日志规范（⚠️ 严格遵守）
+
+### 核心原则
+
+**所有日志记录必须使用 `log/slog` 包，禁止使用 `fmt` 包进行日志输出。**
+
+### 日志使用场景
+
+#### 1. **使用 slog 的场景**
+
+```go
+// ✅ 正确：所有日志记录
+slog.Info("Starting installation", "version", cfg.Version)
+slog.Error("Installation failed", "error", err)
+slog.Warn("Docker not available", "reason", "not installed")
+slog.Debug("Environment check", "docker", true)
+
+// ✅ 正确：带上下文的日志
+slog.Info("Creating container",
+    "name", cfg.ContainerName,
+    "port", cfg.Port,
+    "image", cfg.GetImageName())
+
+// ✅ 正确：错误日志
+slog.Error("Failed to pull image",
+    "image", imageName,
+    "error", err)
+```
+
+#### 2. **使用 fmt 的场景（仅限用户界面输出）**
+
+```go
+// ✅ 允许：用户界面输出（帮助信息）
+fmt.Println("DPanel Installer")
+fmt.Printf("Version: %s\n", version)
+
+// ✅ 允许：写入文件（安装日志）
+fmt.Fprintf(logFile, "=== Installation Log ===\n")
+fmt.Fprintf(logFile, "Date: %s\n", timestamp)
+
+// ❌ 禁止：使用 fmt 输出日志
+fmt.Printf("Error: %v\n", err)  // ✗ 错误！应该用 slog
+fmt.Println("Starting...")       // ✗ 错误！应该用 slog
+```
+
+### 日志级别
+
+```go
+// Debug：详细的调试信息
+slog.Debug("Parsing command line flags", "args", args)
+
+// Info：一般信息（默认级别）
+slog.Info("Installation completed successfully")
+
+// Warn：警告信息（不影响功能）
+slog.Warn("Docker Desktop not installed", "action", "using binary installation")
+
+// Error：错误信息（影响功能）
+slog.Error("Failed to create container", "error", err)
+```
+
+### 结构化日志
+
+```go
+// ✅ 正确：使用键值对
+slog.Info("Configuration loaded",
+    "version", cfg.Version,
+    "edition", cfg.Edition,
+    "port", cfg.Port)
+
+// ❌ 错误：拼接字符串
+slog.Info(fmt.Sprintf("Configuration loaded: version=%s edition=%s port=%d",
+    cfg.Version, cfg.Edition, cfg.Port))
+```
+
+### 日志文件位置
+
+```
+程序目录/
+├── run.log                 # 运行日志（JSON 格式，slog 输出）
+└── install_logs/
+    ├── latest.log           # 最新安装日志（文本格式，fmt.Fprintf 输出）
+    ├── install_20250322_150405.log
+    └── ...
+```
+
+### 日志记录时机
+
+```go
+// ✅ 程序启动
+slog.Info("Starting DPanel Installer", "version", version, "mode", mode)
+
+// ✅ 关键操作开始
+slog.Info("Creating container", "name", containerName)
+
+// ✅ 关键操作完成
+slog.Info("Container created successfully", "id", containerID)
+
+// ✅ 环境检测
+slog.Info("Environment check completed",
+    "docker_available", envCheck.DockerAvailable,
+    "os", envCheck.OS)
+
+// ✅ 配置应用
+slog.Info("Configuration applied",
+    "source", source.Name(),
+    "action", cfg.Action)
+
+// ✅ 错误发生
+slog.Error("Operation failed",
+    "operation", "pull_image",
+    "image", imageName,
+    "error", err)
+```
+
+### 禁止的模式
+
+```go
+// ❌ 禁止：使用 fmt 输出日志
+fmt.Printf("Error: %v\n", err)
+fmt.Println("Starting installation...")
+fmt.Fprintf(os.Stderr, "Warning: %s\n", msg)
+
+// ❌ 禁止：使用 log 包
+log.Println("Starting...")
+log.Printf("Error: %v", err)
+
+// ❌ 禁止：使用 fmt + slog 组合
+fmt.Println(slog.String("message", "value"))
+```
+
+### 安装日志文件
+
+安装日志文件（`install_logs/*.log`）使用 `fmt.Fprintf` 写入，因为：
+1. 需要特定格式便于用户查看
+2. 不是程序日志，是安装记录
+3. 需要人类可读的文本格式
+
+```go
+// ✅ 正确：写入安装日志
+func (e *Engine) saveInstallationLog() error {
+    logFile, _ := os.Create(logPath)
+    defer logFile.Close()
+
+    fmt.Fprintf(logFile, "=== DPanel Installation Log ===\n")
+    fmt.Fprintf(logFile, "Date: %s\n", time.Now().Format("2006-01-02 15:04:05"))
+    fmt.Fprintf(logFile, "Version: %s\n", e.Config.Version)
+    fmt.Fprintf(logFile, "\n=== Configuration ===\n")
+    fmt.Fprintf(logFile, "Container Name: %s\n", e.Config.ContainerName)
+    fmt.Fprintf(logFile, "\n=== Execution Command ===\n")
+    fmt.Fprintf(logFile, "%s\n", command)
+
+    slog.Info("Installation log saved", "path", logPath)
+    return nil
+}
+```
 
 ## 开发注意事项
 
@@ -943,24 +1228,90 @@ if dockerExists {
 }
 ```
 
-#### 4. **遵循已定义的规范**
+#### 4. **优先使用常量而非字符串字面量**（⚠️ 严格遵守）
+- ✅ **优先使用**：已定义的常量（`install.ActionInstall`, `install.InstallTypeContainer` 等）
+- ❌ **禁止使用**：硬编码的字符串字面量（如 `"install"`, `"container"` 等）
+- 📋 **常量位置**：`internal/install/constants.go`
+
+**所有配置值必须使用常量**：
+
+```go
+// ✅ 正确：使用常量
+if m.config.InstallType == install.InstallTypeContainer {
+    // 处理逻辑
+}
+
+m.config.Action = install.ActionInstall
+m.config.Version = install.VersionCommunity
+m.config.Edition = install.EditionLite
+m.config.OS = install.OSDebian
+m.config.Registry = install.RegistryHub
+m.config.DockerConnType = install.DockerConnLocal
+
+// ❌ 错误：使用字符串字面量
+if m.config.InstallType == "container" {  // ✗ 错误！
+    // 处理逻辑
+}
+
+m.config.Action = "config"  // ✗ 错误！
+```
+
+**可用常量列表**：
+
+| 类别 | 常量 | 值 |
+|------|------|-----|
+| 操作类型 | `ActionInstall`, `ActionUpgrade`, `ActionUninstall` | `"install"`, `"upgrade"`, `"uninstall"` |
+| 安装类型 | `InstallTypeContainer`, `InstallTypeBinary`, `InstallTypeInstallDocker` | `"container"`, `"binary"`, `"install_docker"` |
+| 版本 | `VersionCommunity`, `VersionPro`, `VersionDev` | `"community"`, `"pro"`, `"dev"` |
+| 版本类型 | `EditionStandard`, `EditionLite` | `"standard"`, `"lite"` |
+| 系统 | `OSAlpine`, `OSDebian` | `"alpine"`, `"debian"` |
+| 镜像源 | `RegistryHub`, `RegistryAliyun` | `"hub"`, `"aliyun"` |
+| Docker 连接 | `DockerConnLocal`, `DockerConnTCP`, `DockerConnSSH` | `"local"`, `"tcp"`, `"ssh"` |
+
+**验证函数**：
+```go
+// ✅ 使用验证函数
+if install.IsValidAction(action) {
+    // 有效
+}
+
+if install.IsValidInstallType(installType) {
+    // 有效
+}
+```
+
+**原因**：
+- ✅ **类型安全**：编译时检查，避免拼写错误
+- ✅ **IDE 支持**：自动补全和重构
+- ✅ **单一真实来源**：修改常量定义即可全局更新
+- ✅ **文档化**：常量名即文档，清晰表达意图
+- ❌ **字符串风险**：拼写错误在运行时才能发现
+
+#### 5. **遵循已定义的规范**
 - ✅ **严格遵守**：帮助提示格式、样式使用规范
 - ✅ **保持一致**：配色方案、交互模式
 - 📋 **参考文档**：`CLAUDE.md` 中的相关规范章节
 
-#### 5. **修改前必查**
+#### 6. **修改前必查**
 在修改或添加代码前，必须完成以下检查：
 1. 🔍 使用 `Grep` 搜索是否有类似实现
 2. 📖 查阅 `CLAUDE.md` 相关规范
 3. 🎨 检查是否有可复用的样式和翻译键
-4. 💡 评估是否可以通过扩展现有功能实现
+4. 🔢 检查是否有可用的常量（查看 `internal/install/constants.go`）
+5. 💡 评估是否可以通过扩展现有功能实现
 
-#### 6. **规范更新**
+#### 7. **规范更新**
 当确实需要创建新的样式、翻译键或方法时：
 - ✅ 必须更新相关文档（`CLAUDE.md`）
 - ✅ 添加清晰的注释说明用途
 - ✅ 遵循命名约定
 - ✅ 考虑未来可扩展性
+
+**添加新常量时**：
+- ✅ 在 `internal/install/constants.go` 中定义
+- ✅ 添加对应的 `IsValid*()` 验证函数（如果需要）
+- ✅ 在 `Valid*` 数组中注册
+- ✅ 更新本规范的常量列表
 
 ### 代码审查检查项
 
@@ -968,9 +1319,11 @@ if dockerExists {
 - [ ] 是否复用了现有的样式？（检查 TUI 样式定义）
 - [ ] 是否复用了现有的翻译键？（检查翻译文件）
 - [ ] 是否复用了现有的代码逻辑？（使用 Grep 搜索）
+- [ ] 是否使用了常量而非字符串字面量？（检查 `internal/install/constants.go`）
 - [ ] 是否遵循了已定义的规范？（查阅 CLAUDE.md）
 - [ ] 新增的内容是否已更新文档？
 - [ ] 代码风格是否与现有代码一致？
+- [ ] 新增常量是否已添加到 `constants.go` 并更新文档？
 
 ## Agent Teams 系统
 
@@ -1243,16 +1596,18 @@ gosec ./...
 
 ## 开发注意事项
 
-1. **CLI 模式优先**：所有功能应该能在 CLI 模式下工作
-2. **TUI 路由到 CLI**：TUI 收集配置后，创建 Config 对象，调用 Engine 执行
-3. **语言包只在 TUI 使用**：不要在 engine 或其他包中使用 i18n
-4. **错误处理**：Engine 返回的错误应该在 TUI 中友好显示
-5. **默认值**：所有配置项都应该有合理的默认值
-6. **日志记录**：使用 slog 记录到 run.log，便于调试
-7. **环境检测**：区分"命令存在"和"服务可用"两种情况
-8. **全屏显示**：TUI 使用全屏无边框设计，最大化利用屏幕空间
-9. **配色一致**：使用 DPanel 主题配色方案
-10. **命令记录**：所有安装过程和最终命令必须完整记录
+1. **模式选择逻辑**：无参数 → TUI，有参数 → CLI（由 Registry.Detect 自动判断）
+2. **main.go 单一职责**：只负责分发，不处理业务逻辑，保持在 60 行左右
+3. **TUI 和 CLI 平等**：两者都是配置源，都修改 Config，都通过 Config.Run() 执行
+4. **语言包只在 TUI 使用**：不要在 engine 或其他包中使用 i18n
+5. **错误处理**：Engine 返回的错误应该在 TUI 中友好显示，在 CLI 中直接输出
+6. **默认值**：所有配置项都应该有合理的默认值
+7. **日志记录**：使用 slog 记录到 run.log，便于调试
+8. **环境检测**：区分"命令存在"和"服务可用"两种情况
+9. **全屏显示**：TUI 使用全屏无边框设计，最大化利用屏幕空间
+10. **配色一致**：使用 DPanel 主题配色方案
+11. **命令记录**：所有安装过程和最终命令必须完整记录
+12. **使用常量**：所有配置值必须使用 `internal/install/constants.go` 中定义的常量，禁止硬编码字符串字面量
 
 ## 调试技巧
 

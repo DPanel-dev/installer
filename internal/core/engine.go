@@ -1,4 +1,4 @@
-package install
+package core
 
 import (
 	"fmt"
@@ -9,15 +9,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/dpanel-dev/installer/internal/config"
 )
 
 // Engine handles the installation process
 type Engine struct {
-	Config *Config
+	Config *config.Config
 }
 
 // NewEngine creates a new installation engine
-func NewEngine(cfg *Config) *Engine {
+func NewEngine(cfg *config.Config) *Engine {
 	return &Engine{Config: cfg}
 }
 
@@ -30,11 +32,11 @@ func (e *Engine) Run() error {
 	)
 
 	switch e.Config.Action {
-	case "install":
+	case config.ActionInstall:
 		return e.install()
-	case "upgrade":
+	case config.ActionUpgrade:
 		return e.upgrade()
-	case "uninstall":
+	case config.ActionUninstall:
 		return e.uninstall()
 	default:
 		return fmt.Errorf("unknown action: %s", e.Config.Action)
@@ -51,7 +53,7 @@ func (e *Engine) install() error {
 	}
 
 	// Build and execute command
-	if e.Config.InstallType == "container" {
+	if e.Config.InstallType == InstallTypeContainer {
 		return e.installContainer()
 	}
 	return e.installBinary()
@@ -72,7 +74,7 @@ func (e *Engine) upgrade() error {
 	}
 
 	// Perform upgrade based on installation type
-	if e.Config.InstallType == "container" {
+	if e.Config.InstallType == InstallTypeContainer {
 		return e.upgradeContainer()
 	}
 	return e.upgradeBinary()
@@ -88,7 +90,7 @@ func (e *Engine) uninstall() error {
 	}
 
 	// Perform uninstall based on installation type
-	if e.Config.InstallType == "container" {
+	if e.Config.InstallType == InstallTypeContainer {
 		return e.uninstallContainer()
 	}
 	return e.uninstallBinary()
@@ -99,7 +101,7 @@ func (e *Engine) checkEnvironment() error {
 	slog.Info("Checking environment")
 
 	// Check Docker/Podman availability
-	if e.Config.InstallType == "container" {
+	if e.Config.InstallType == InstallTypeContainer {
 		if err := e.checkDocker(); err != nil {
 			return err
 		}
@@ -136,7 +138,7 @@ func (e *Engine) checkDocker() error {
 	}
 
 	// Test docker service if it's the configured type
-	if e.Config.DockerConnection.Type == "local" {
+	if e.Config.DockerConnType == DockerConnLocal {
 		// Try docker first
 		if dockerExists {
 			slog.Info("Testing Docker service")
@@ -196,28 +198,27 @@ func (e *Engine) testDockerService(runtime string) error {
 
 // checkDockerConnection verifies Docker connection
 func (e *Engine) checkDockerConnection() error {
-	conn := e.Config.DockerConnection
-	slog.Info("Checking docker connection", "type", conn.Type)
+	slog.Info("Checking docker connection", "type", e.Config.DockerConnType)
 
-	switch conn.Type {
-	case "local":
-		return e.checkLocalConnection(conn)
-	case "tcp":
-		return e.checkTCPConnection(conn)
-	case "ssh":
-		return e.checkSSHConnection(conn)
+	switch e.Config.DockerConnType {
+	case config.DockerConnLocal:
+		return e.checkLocalConnection()
+	case config.DockerConnTCP:
+		return e.checkTCPConnection()
+	case config.DockerConnSSH:
+		return e.checkSSHConnection()
 	default:
-		return fmt.Errorf("unknown docker connection type: %s", conn.Type)
+		return fmt.Errorf("unknown docker connection type: %s", e.Config.DockerConnType)
 	}
 }
 
 // checkLocalConnection checks local socket file
-func (e *Engine) checkLocalConnection(conn *DockerConnection) error {
-	sockPath := conn.SockPath
+func (e *Engine) checkLocalConnection() error {
+	sockPath := e.Config.DockerSockPath
 	if sockPath == "" {
 		sockPath = "/var/run/docker.sock"
 	}
-	conn.SockPath = sockPath
+	e.Config.DockerSockPath = sockPath
 
 	slog.Info("Checking local docker sock", "path", sockPath)
 
@@ -233,16 +234,17 @@ func (e *Engine) checkLocalConnection(conn *DockerConnection) error {
 }
 
 // checkTCPConnection checks TCP connectivity
-func (e *Engine) checkTCPConnection(conn *DockerConnection) error {
-	if conn.Host == "" {
+func (e *Engine) checkTCPConnection() error {
+	if e.Config.DockerTCPHost == "" {
 		return fmt.Errorf("docker host is required for TCP connection")
 	}
 
-	slog.Info("Checking TCP connection", "host", conn.Host)
+	slog.Info("Checking TCP connection", "host", e.Config.DockerTCPHost)
 
 	// Test TCP connection by trying to execute docker command with -H flag
 	runtime := e.getDockerRuntime()
-	testCmd := exec.Command(runtime, "-H", conn.Host, "ps")
+	host := fmt.Sprintf("%s:%d", e.Config.DockerTCPHost, e.Config.DockerTCPPort)
+	testCmd := exec.Command(runtime, "-H", host, "ps")
 	output, err := testCmd.CombinedOutput()
 
 	if err != nil {
@@ -250,20 +252,20 @@ func (e *Engine) checkTCPConnection(conn *DockerConnection) error {
 		return fmt.Errorf("TCP connection to Docker daemon failed: %w", err)
 	}
 
-	slog.Info("TCP connection successful", "host", conn.Host)
+	slog.Info("TCP connection successful", "host", e.Config.DockerTCPHost)
 	return nil
 }
 
 // checkSSHConnection checks SSH connectivity
-func (e *Engine) checkSSHConnection(conn *DockerConnection) error {
-	if conn.Host == "" {
+func (e *Engine) checkSSHConnection() error {
+	if e.Config.DockerSSHHost == "" {
 		return fmt.Errorf("docker host is required for SSH connection")
 	}
-	if conn.SSHUser == "" {
+	if e.Config.DockerSSHUser == "" {
 		return fmt.Errorf("SSH username is required for SSH connection")
 	}
 
-	slog.Info("Checking SSH connection", "host", conn.Host, "user", conn.SSHUser)
+	slog.Info("Checking SSH connection", "host", e.Config.DockerSSHHost, "user", e.Config.DockerSSHUser)
 
 	// Test SSH connection by trying to execute docker command via SSH
 	// Build SSH command: ssh user@host docker ps
@@ -271,14 +273,18 @@ func (e *Engine) checkSSHConnection(conn *DockerConnection) error {
 	sshCmd = append(sshCmd, "ssh")
 
 	// Add SSH options
-	if conn.SSHKey != "" {
-		sshCmd = append(sshCmd, "-i", conn.SSHKey)
+	if e.Config.DockerSSHKey != "" {
+		sshCmd = append(sshCmd, "-i", e.Config.DockerSSHKey)
 	}
 	sshCmd = append(sshCmd, "-o", "StrictHostKeyChecking=no")
 	sshCmd = append(sshCmd, "-o", "UserKnownHostsFile=/dev/null")
 
 	// Add host and user
-	sshCmd = append(sshCmd, fmt.Sprintf("%s@%s", conn.SSHUser, conn.Host))
+	host := fmt.Sprintf("%s@%s", e.Config.DockerSSHUser, e.Config.DockerSSHHost)
+	if e.Config.DockerSSHPort > 0 {
+		host = fmt.Sprintf("%s@%s:%d", e.Config.DockerSSHUser, e.Config.DockerSSHHost, e.Config.DockerSSHPort)
+	}
+	sshCmd = append(sshCmd, host)
 
 	// Add docker command
 	sshCmd = append(sshCmd, "docker", "ps")
@@ -292,7 +298,7 @@ func (e *Engine) checkSSHConnection(conn *DockerConnection) error {
 		return fmt.Errorf("SSH connection to Docker daemon failed: %w", err)
 	}
 
-	slog.Info("SSH connection successful", "host", conn.Host)
+	slog.Info("SSH connection successful", "host", e.Config.DockerSSHHost)
 	return nil
 }
 
@@ -341,15 +347,15 @@ func (e *Engine) logInstallationConfig() {
 	slog.Info("Version", "version", cfg.Version)
 	slog.Info("Edition", "edition", cfg.Edition)
 	slog.Info("OS", "os", cfg.OS)
-	slog.Info("Registry", "registry", cfg.ImageRegistry)
+	slog.Info("Registry", "registry", cfg.Registry)
 	slog.Info("Container Name", "name", cfg.ContainerName)
 	slog.Info("Port", "port", cfg.Port)
 	slog.Info("Data Path", "path", cfg.DataPath)
-	if cfg.DockerConnection != nil {
-		slog.Info("Docker Connection", "type", cfg.DockerConnection.Type)
+	if cfg.DockerConnType != "" {
+		slog.Info("Docker Connection", "type", cfg.DockerConnType)
 	}
-	if cfg.Proxy != "" {
-		slog.Info("Proxy", "proxy", cfg.Proxy)
+	if cfg.HTTPProxy != "" {
+		slog.Info("HTTP Proxy", "proxy", cfg.HTTPProxy)
 	}
 	if cfg.DNS != "" {
 		slog.Info("DNS", "dns", cfg.DNS)
@@ -403,8 +409,8 @@ func (e *Engine) saveInstallationLog(command string) error {
 	fmt.Fprintf(file, "Container Name: %s\n", e.Config.ContainerName)
 	fmt.Fprintf(file, "Port: %d\n", e.Config.Port)
 	fmt.Fprintf(file, "Data Path: %s\n", e.Config.DataPath)
-	if e.Config.DockerConnection != nil {
-		fmt.Fprintf(file, "Docker Connection: %s\n", e.Config.DockerConnection.Type)
+	if e.Config.DockerConnType != "" {
+		fmt.Fprintf(file, "Docker Connection: %s\n", e.Config.DockerConnType)
 	}
 	fmt.Fprintf(file, "\n=== Execution Command ===\n")
 	fmt.Fprintf(file, "%s\n", command)
@@ -462,7 +468,7 @@ func (e *Engine) installBinary() error {
 	// Step 3: Install to system path
 	slog.Info("Step 3: Installing binary to system path")
 	if err := e.installBinaryToPath(); err != nil {
-		return fmt.Errorf("failed to install binary: %w", err)
+		return fmt.Errorf("failed to config binary: %w", err)
 	}
 
 	// Step 4: Create service file
@@ -525,9 +531,11 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	parts = append(parts, "-e", fmt.Sprintf("APP_NAME=%s", cfg.ContainerName))
 
 	// Proxy
-	if cfg.Proxy != "" {
-		parts = append(parts, "-e", fmt.Sprintf("HTTP_PROXY=%s", cfg.Proxy))
-		parts = append(parts, "-e", fmt.Sprintf("HTTPS_PROXY=%s", cfg.Proxy))
+	if cfg.HTTPProxy != "" {
+		parts = append(parts, "-e", fmt.Sprintf("HTTP_PROXY=%s", cfg.HTTPProxy))
+	}
+	if cfg.HTTPSProxy != "" {
+		parts = append(parts, "-e", fmt.Sprintf("HTTPS_PROXY=%s", cfg.HTTPSProxy))
 	}
 
 	// DNS
@@ -536,7 +544,7 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	}
 
 	// Ports
-	if cfg.Edition == "standard" {
+	if cfg.Edition == EditionStandard {
 		parts = append(parts, "-p", "80:80", "-p", "443:443")
 	}
 	if cfg.Port > 0 {
@@ -547,7 +555,7 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	}
 
 	// Volumes
-	parts = append(parts, "-v", fmt.Sprintf("%s:/var/run/docker.sock", cfg.DockerConnection.SockPath))
+	parts = append(parts, "-v", fmt.Sprintf("%s:/var/run/docker.sock", cfg.DockerSockPath))
 	parts = append(parts, "-v", fmt.Sprintf("%s:/dpanel", cfg.DataPath))
 
 	// Image
@@ -558,37 +566,7 @@ func (e *Engine) buildDockerCommand() (string, error) {
 
 // buildImageName builds the Docker image name
 func (e *Engine) buildImageName() string {
-	cfg := e.Config
-	var image string
-
-	// Build base image name
-	switch cfg.Version {
-	case "community":
-		if cfg.Edition == "lite" {
-			image = "dpanel/dpanel:lite"
-		} else {
-			image = "dpanel/dpanel:latest"
-		}
-	case "pro":
-		if cfg.Edition == "lite" {
-			image = "dpanel/dpanel-pe:lite"
-		} else {
-			image = "dpanel/dpanel-pe:latest"
-		}
-	case "dev":
-		if cfg.Edition == "lite" {
-			image = "dpanel/dpanel:beta-lite"
-		} else {
-			image = "dpanel/dpanel:beta"
-		}
-	}
-
-	// Add registry prefix
-	if cfg.ImageRegistry == "aliyun" {
-		image = "registry.cn-hangzhou.aliyuncs.com/" + image
-	}
-
-	return image
+	return e.Config.GetImageName()
 }
 
 // executeCommand executes a shell command
@@ -1005,19 +983,19 @@ func (e *Engine) getBinaryDownloadURL() string {
 
 // installBinaryToPath installs the binary to system path
 func (e *Engine) installBinaryToPath() error {
-	// Determine install path based on OS
+	// Determine config path based on OS
 	installPath := e.getBinaryInstallPath()
 	slog.Info("Installing binary to", "path", installPath)
 
 	// TODO: Implement installation logic
-	// Copy binary to install path
+	// Copy binary to config path
 	// Set executable permissions
 	return fmt.Errorf("binary installation to path not implemented yet")
 }
 
 // getBinaryInstallPath returns the installation path for the binary
 func (e *Engine) getBinaryInstallPath() string {
-	// Determine install path based on OS
+	// Determine config path based on OS
 	// Linux: /usr/local/bin/dpanel
 	// macOS: /usr/local/bin/dpanel
 	// Windows: C:\Program Files\DPanel\dpanel.exe
