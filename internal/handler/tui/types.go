@@ -25,6 +25,7 @@ const (
 
 const (
 	StepLanguage Step = iota
+	StepMirrorCheck
 	StepAction
 	StepInstallType
 	StepVersion
@@ -45,6 +46,56 @@ const (
 	StepComplete
 	StepError
 )
+
+// String 返回步骤名称
+func (s Step) String() string {
+	switch s {
+	case StepLanguage:
+		return "language"
+	case StepMirrorCheck:
+		return "mirror_check"
+	case StepAction:
+		return "action"
+	case StepInstallType:
+		return "install_type"
+	case StepVersion:
+		return "version"
+	case StepEdition:
+		return "edition"
+	case StepBaseImage:
+		return "base_image"
+	case StepRegistry:
+		return "registry"
+	case StepDockerConnection:
+		return "docker_connection"
+	case StepDockerConfig:
+		return "docker_config"
+	case StepTLSConfig:
+		return "tls_config"
+	case StepSSHConfig:
+		return "ssh_config"
+	case StepContainerName:
+		return "container_name"
+	case StepPort:
+		return "port"
+	case StepDataPath:
+		return "data_path"
+	case StepProxy:
+		return "proxy"
+	case StepDNS:
+		return "dns"
+	case StepConfirm:
+		return "confirm"
+	case StepInstalling:
+		return "installing"
+	case StepComplete:
+		return "complete"
+	case StepError:
+		return "error"
+	default:
+		return "unknown"
+	}
+}
 
 // ========== 数据结构 ==========
 
@@ -82,24 +133,4 @@ func NextStep(step Step) func(cfg *config.Config) Step {
 	return func(cfg *config.Config) Step {
 		return step
 	}
-}
-
-// prevStepMap 后退步骤映射
-var prevStepMap = map[Step]Step{
-	StepAction:           StepLanguage,
-	StepInstallType:      StepAction,
-	StepVersion:          StepInstallType,
-	StepEdition:          StepVersion,
-	StepBaseImage:        StepEdition,
-	StepRegistry:         StepBaseImage,
-	StepDockerConnection: StepRegistry,
-	StepDockerConfig:     StepDockerConnection,
-	StepTLSConfig:        StepDockerConfig,
-	StepSSHConfig:        StepDockerConfig,
-	StepContainerName:    StepDockerConnection, // 简化，可能需要根据情况调整
-	StepPort:             StepContainerName,
-	StepDataPath:         StepPort,
-	StepProxy:            StepDataPath,
-	StepDNS:              StepProxy,
-	StepConfirm:          StepDNS,
 }

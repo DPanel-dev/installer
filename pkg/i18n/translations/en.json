@@ -58,6 +58,9 @@
   "docker_hub_desc": "Docker official registry",
   "aliyun": "Aliyun (China)",
   "aliyun_desc": "Aliyun mirror for faster downloads in China",
+  "registry_unavailable": "; Unavailable",
+  "registry_latency": "; Latency: %dms",
+  "recommended": "Recommended",
   "docker_connection": "Docker/Podman Connection",
   "local_sock": "Local Socket",
   "local_sock_desc": "Connect to local Docker/Podman via Unix socket",
@@ -119,5 +122,6 @@
   "ssh_host": "SSH Host",
   "confirm_desc": "Proceed with the installation",
   "cancel_desc": "Go back to modify settings",
-  "unknown_step": "Unknown Step"
+  "unknown_step": "Unknown Step",
+  "checking_mirror_sources": "Checking mirror connectivity..."
 }

@@ -149,6 +149,12 @@ func DetectPodman() *ContainerConn {
 
 // TestRegistryConnectivity 测试镜像仓库连通性
 func TestRegistryConnectivity(host string) bool {
+	latency := TestRegistryLatency(host)
+	return latency > 0
+}
+
+// TestRegistryLatency 测试镜像仓库延迟（毫秒），0 表示不可用
+func TestRegistryLatency(host string) int {
 	if host == types.RegistryDockerHub {
 		host = "index.docker.io"
 	}
@@ -159,17 +165,25 @@ func TestRegistryConnectivity(host string) bool {
 		Timeout: timeout,
 	}
 
+	start := time.Now()
 	resp, err := client.Get(url)
 	if err != nil {
-		slog.Debug("Registry connectivity test failed", "host", host, "error", err)
-		return false
+		slog.Debug("Registry latency test failed", "host", host, "error", err)
+		return 0
 	}
 	defer resp.Body.Close()
 
+	latency := int(time.Since(start).Milliseconds())
+
 	// 200, 401, 403 都表示服务可达（401/403 是需要认证但服务存在）
 	available := resp.StatusCode < 500
-	slog.Debug("Registry connectivity test result", "host", host, "available", available, "status", resp.StatusCode)
-	return available
+	if !available {
+		slog.Debug("Registry latency test unavailable", "host", host, "status", resp.StatusCode)
+		return 0
+	}
+
+	slog.Debug("Registry latency test result", "host", host, "latency_ms", latency, "status", resp.StatusCode)
+	return latency
 }
 
 // IsMusl 检测系统是否使用 musl libc（如 Alpine）

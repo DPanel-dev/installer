@@ -1,27 +1,14 @@
 package cli
 
 import (
-	"flag"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/handler"
 	"github.com/dpanel-dev/installer/internal/types"
 )
-
-// HelpError 表示用户请求帮助
-type HelpError struct{}
-
-func (e *HelpError) Error() string {
-	return "help requested"
-}
-
-// VersionError 表示用户请求版本信息
-type VersionError struct{}
-
-func (e *VersionError) Error() string {
-	return "version requested"
-}
 
 // CLI 实现 handler.Handler 接口
 type CLI struct {
@@ -70,187 +57,248 @@ func (c *CLI) Name() string {
 
 // Run 实现 handler.Handler 接口
 func (c *CLI) Run(cfg *config.Config) error {
-	// 使用存储的参数
 	return c.run(cfg)
 }
 
 // run 运行 CLI 模式
 func (c *CLI) run(cfg *config.Config) error {
-	// 使用实例化时传入的参数
 	args := c.args
 
-	// 1. 解析参数
-	opts, err := parseFlags(args)
-	if err != nil {
-		// 处理特殊的帮助和版本请求
-		if _, ok := err.(*HelpError); ok {
-			c.showHelp()
+	// 1. 处理全局 flags (--help, --version)
+	if len(args) == 1 {
+		switch args[0] {
+		case "--help", "-h":
+			c.showRootHelp()
+			return nil
+		case "--version", "-v":
+			c.showVersion()
 			return nil
 		}
-		if _, ok := err.(*VersionError); ok {
-			c.showVersion()
+	}
+
+	// 2. 无子命令时显示帮助
+	if len(args) == 0 {
+		c.showRootHelp()
+		return nil
+	}
+
+	// 3. 查找子命令
+	cmdName := args[0]
+	cmd := GetCommand(cmdName)
+	if cmd == nil {
+		return fmt.Errorf("unknown command: %s", cmdName)
+	}
+
+	// 4. 解析子命令 flags
+	opts, err := c.parseCommandFlags(cmd, args[1:])
+	if err != nil {
+		if err.Error() == "help requested" {
+			c.showCommandHelp(cmd)
 			return nil
 		}
 		return err
 	}
 
-	// 2. 应用到 Config
-	if err := cfg.ApplyOptions(opts...); err != nil {
-		return fmt.Errorf("failed to apply config: %w", err)
+	// 5. 设置 Action
+	cfg.Action = cmd.Action
+
+	// 6. 应用到 Config
+	for _, opt := range opts {
+		if err := opt(cfg); err != nil {
+			return fmt.Errorf("failed to apply config: %w", err)
+		}
 	}
 
-	// 配置完成，由 main 调用 engine 执行
 	return nil
 }
 
-// parseFlags 解析命令行参数
-func parseFlags(args []string) ([]config.Option, error) {
-	fs := flag.NewFlagSet("dpanel-installer", flag.ContinueOnError)
+// parseCommandFlags 解析子命令的 flags
+func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*config.Config) error, error) {
+	// 解析结果存储
+	values := make(map[string]string)
 
-	// 定义标志
-	var showHelp, showVersion bool
-	var action, language, installType, dpanelVersion, edition, baseImage, registry string
-	var containerName, dataPath, dockerSock, dockerHost, proxy, dns string
-	var port int
-	var dockerType string
-	var tlsEnabled bool
-	var tlsPath, sshUser, sshPassword, sshKey string
+	// 遍历 args 解析 flags
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
 
-	fs.BoolVar(&showHelp, "help", false, "Show help")
-	fs.BoolVar(&showHelp, "h", false, "Show help (shorthand)")
-	fs.BoolVar(&showVersion, "version", false, "Show version")
-	fs.BoolVar(&showVersion, "v", false, "Show version (shorthand)")
-	fs.StringVar(&action, "action", "", "Action: install, upgrade, uninstall")
-	fs.StringVar(&language, "language", "", "Language: zh, en")
-	fs.StringVar(&installType, "install-type", "", "Install type: container, binary")
-	fs.StringVar(&dpanelVersion, "dpanel-version", "", "DPanel version: community, pro, dev")
-	fs.StringVar(&edition, "edition", "", "Edition: standard, lite")
-	fs.StringVar(&baseImage, "base-image", "", "Base image: alpine, debian")
-	fs.StringVar(&registry, "registry", "", "Registry: hub, aliyun")
-	fs.StringVar(&containerName, "container-name", "", "Container name")
-	fs.IntVar(&port, "port", 0, "Port (0 for random)")
-	fs.StringVar(&dataPath, "data-path", "", "Data path")
-	fs.StringVar(&dockerType, "docker-type", "local", "Docker type: local, tcp, ssh")
-	fs.StringVar(&dockerSock, "docker-sock", "", "Docker sock path")
-	fs.StringVar(&dockerHost, "docker-host", "", "Docker host")
-	fs.BoolVar(&tlsEnabled, "tls-enabled", false, "TLS enabled")
-	fs.StringVar(&tlsPath, "tls-path", "", "TLS path")
-	fs.StringVar(&sshUser, "ssh-user", "", "SSH user")
-	fs.StringVar(&sshPassword, "ssh-password", "", "SSH password")
-	fs.StringVar(&sshKey, "ssh-key", "", "SSH key path")
-	fs.StringVar(&proxy, "proxy", "", "Proxy address")
-	fs.StringVar(&dns, "dns", "", "DNS address")
-
-	if err := fs.Parse(args); err != nil {
-		return nil, err
-	}
-
-	// 处理 help 和 version
-	if showHelp {
-		return nil, &HelpError{}
-	}
-	if showVersion {
-		return nil, &VersionError{}
-	}
-
-	// 构建 Option 列表
-	opts := []config.Option{}
-
-	if action != "" {
-		opts = append(opts, config.WithAction(action))
-	}
-	if language != "" {
-		opts = append(opts, config.WithLanguage(language))
-	}
-	if installType != "" {
-		opts = append(opts, config.WithInstallType(installType))
-	}
-	if dpanelVersion != "" {
-		opts = append(opts, config.WithVersion(dpanelVersion))
-	}
-	if edition != "" {
-		opts = append(opts, config.WithEdition(edition))
-	}
-	if baseImage != "" {
-		opts = append(opts, config.WithBaseImage(baseImage))
-	}
-	if registry != "" {
-		opts = append(opts, config.WithRegistry(registry))
-	}
-	if containerName != "" {
-		opts = append(opts, config.WithContainerName(containerName))
-	}
-	if port > 0 {
-		opts = append(opts, config.WithPort(port))
-	}
-	if dataPath != "" {
-		opts = append(opts, config.WithDataPath(dataPath))
-	}
-
-	// Docker 连接
-	switch dockerType {
-	case types.DockerConnLocal:
-		opts = append(opts, config.WithContainerSock(dockerSock))
-	case types.DockerConnTCP:
-		opts = append(opts, config.WithContainerTCP(dockerHost, 2376, tlsEnabled))
-		if tlsEnabled && tlsPath != "" {
-			// TLS 证书路径（简化处理）
-			opts = append(opts, config.WithContainerTLS(
-				tlsPath+"/ca.pem",
-				tlsPath+"/cert.pem",
-				tlsPath+"/key.pem",
-			))
+		// --help
+		if arg == "--help" || arg == "-h" {
+			return nil, fmt.Errorf("help requested")
 		}
-	case types.DockerConnSSH:
-		opts = append(opts, config.WithContainerSSH(dockerHost, 22, sshUser))
-		if sshPassword != "" || sshKey != "" {
-			opts = append(opts, config.WithContainerSSHAuth(sshPassword, sshKey))
+
+		// 解析 flag
+		if strings.HasPrefix(arg, "--") {
+			// 长格式: --name value 或 --name=value
+			name, value := parseLongFlag(arg)
+			if value == "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				value = args[i+1]
+				i++
+			}
+			values[name] = value
 		}
 	}
 
-	// 网络配置
-	if proxy != "" {
-		opts = append(opts, config.WithHTTPProxy(proxy))
+	// 查找 flag 定义并应用
+	opts := []func(*config.Config) error{}
+	for _, flag := range cmd.Flags {
+		// 检查是否提供了该 flag
+		value, found := values[flag.Name]
+
+		// 如果未提供但有默认值，使用默认值
+		if !found && flag.Default != "" {
+			value = flag.Default
+			found = true
+		}
+
+		// 跳过未提供的 flag
+		if !found {
+			continue
+		}
+
+		// 验证枚举值
+		if flag.Type == FlagTypeEnum && len(flag.EnumValues) > 0 {
+			valid := false
+			for _, ev := range flag.EnumValues {
+				if ev == value {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return nil, fmt.Errorf("invalid value '%s' for --%s, must be one of: %s",
+					value, flag.Name, strings.Join(flag.EnumValues, ", "))
+			}
+		}
+
+		// 应用 flag
+		if flag.Apply != nil {
+			opt, err := flag.Apply(value)
+			if err != nil {
+				return nil, fmt.Errorf("--%s: %w", flag.Name, err)
+			}
+			if opt != nil {
+				opts = append(opts, func(cfg *config.Config) error {
+					return opt(cfg)
+				})
+			}
+		}
 	}
-	if dns != "" {
-		opts = append(opts, config.WithDNS(dns))
+
+	// 特殊处理：组合 Docker 连接参数
+	if dockerType, ok := values["docker-type"]; ok {
+		dockerHost, _ := values["docker-host"]
+		tls, _ := values["tls"]
+		tlsPath, _ := values["tls-path"]
+		sshUser, _ := values["ssh-user"]
+		sshPassword, _ := values["ssh-password"]
+		sshKey, _ := values["ssh-key"]
+
+		switch dockerType {
+		case types.DockerConnLocal:
+			// 本地连接由 WithContainerSock 处理
+		case types.DockerConnTCP:
+			if dockerHost != "" {
+				tlsVerify := tls == "true"
+				opts = append(opts, func(cfg *config.Config) error {
+					return config.WithContainerTCP(dockerHost, 2376, tlsVerify)(cfg)
+				})
+				if tlsVerify && tlsPath != "" {
+					opts = append(opts, func(cfg *config.Config) error {
+						return config.WithContainerTLS(
+							tlsPath+"/ca.pem",
+							tlsPath+"/cert.pem",
+							tlsPath+"/key.pem",
+						)(cfg)
+					})
+				}
+			}
+		case types.DockerConnSSH:
+			if dockerHost != "" {
+				opts = append(opts, func(cfg *config.Config) error {
+					return config.WithContainerSSH(dockerHost, 22, sshUser)(cfg)
+				})
+				if sshPassword != "" || sshKey != "" {
+					opts = append(opts, func(cfg *config.Config) error {
+						return config.WithContainerSSHAuth(sshPassword, sshKey)(cfg)
+					})
+				}
+			}
+		}
 	}
 
 	return opts, nil
 }
 
-// showHelp 显示帮助信息
-func (c *CLI) showHelp() {
-	fmt.Println("\n")
-	fmt.Println(`CLI Mode: Specify all options via command-line flags
+// parseLongFlag 解析长格式 flag
+func parseLongFlag(arg string) (name, value string) {
+	// 去掉 --
+	arg = arg[2:]
+	// 检查是否包含 =
+	if idx := strings.Index(arg, "="); idx >= 0 {
+		return arg[:idx], arg[idx+1:]
+	}
+	return arg, ""
+}
 
-Examples:
-  dpanel-installer --action install --dpanel-version community
-  dpanel-installer --action install --port 8080
+// showRootHelp 显示根帮助
+func (c *CLI) showRootHelp() {
+	fmt.Println()
+	fmt.Println("DPanel Installer - Install, upgrade, and manage DPanel")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  dpanel-installer [command]")
+	fmt.Println()
+	fmt.Println("Commands:")
+	for _, cmd := range Commands {
+		fmt.Printf("  %-12s  %s\n", cmd.Name, cmd.Description)
+	}
+	fmt.Println()
+	fmt.Println("Flags:")
+	fmt.Println("  --help       Show help")
+	fmt.Println("  --version    Show version")
+	fmt.Println()
+	fmt.Println("Use \"dpanel-installer [command] --help\" for more information about a command.")
+	fmt.Println()
+}
 
-Flags:`)
-	fmt.Println("  -h, --help                    Show help")
-	fmt.Println("  -v, --version                 Show version")
-	fmt.Println("      --action <string>         Action: install, upgrade, uninstall")
-	fmt.Println("      --language <string>       Language: zh, en")
-	fmt.Println("      --install-type <string>   Install type: container, binary")
-	fmt.Println("      --dpanel-version <string> DPanel version: community, pro, dev")
-	fmt.Println("      --edition <string>        Edition: standard, lite")
-	fmt.Println("      --base-image <string>     Base image: alpine, debian")
-	fmt.Println("      --registry <string>       Registry: hub, aliyun")
-	fmt.Println("      --container-name <string> Container name")
-	fmt.Println("      --port <int>              Port (0 for random)")
-	fmt.Println("      --data-path <string>      Data path")
-	fmt.Println("      --docker-type <string>    Docker type: local, tcp, ssh")
-	fmt.Println("      --docker-sock <string>    Docker sock path")
-	fmt.Println("      --docker-host <string>    Docker host")
-	fmt.Println("      --tls-enabled             TLS enabled")
-	fmt.Println("      --tls-path <string>       TLS path")
-	fmt.Println("      --ssh-user <string>       SSH user")
-	fmt.Println("      --ssh-password <string>   SSH password")
-	fmt.Println("      --ssh-key <string>        SSH key path")
-	fmt.Println("      --proxy <string>          Proxy address")
-	fmt.Println("      --dns <string>            DNS address")
+// showCommandHelp 显示子命令帮助
+func (c *CLI) showCommandHelp(cmd *CommandDefinition) {
+	fmt.Println()
+	fmt.Printf("Usage: dpanel-installer %s [flags]\n\n", cmd.Name)
+	fmt.Println(cmd.Description)
+	fmt.Println()
+	fmt.Println("Flags:")
+
+	for _, flag := range cmd.Flags {
+		// 构建 flag 字符串
+		flagStr := fmt.Sprintf("    --%s", flag.Name)
+
+		// 添加类型信息
+		var typeInfo string
+		switch flag.Type {
+		case FlagTypeEnum:
+			typeInfo = fmt.Sprintf("[%s]", strings.Join(flag.EnumValues, "|"))
+		case FlagTypeInt:
+			typeInfo = "<int>"
+		case FlagTypeBool:
+			typeInfo = ""
+		default:
+			typeInfo = "<string>"
+		}
+
+		// 添加默认值
+		var defaultInfo string
+		if flag.Default != "" {
+			defaultInfo = fmt.Sprintf(" (default: %s)", flag.Default)
+		}
+
+		// 格式化输出
+		fmt.Printf("  %-20s %-15s %s%s\n", flagStr, typeInfo, flag.Description, defaultInfo)
+	}
+
+	fmt.Println()
+	fmt.Println("  --help            Show help")
+	fmt.Println()
 }
 
 // showVersion 显示版本信息
@@ -258,6 +306,16 @@ func (c *CLI) showVersion() {
 	fmt.Printf("DPanel Installer %s\n", c.version)
 	fmt.Printf("Commit: %s\n", c.commit)
 	fmt.Printf("Date: %s\n", c.date)
+}
+
+// parseBool 解析 bool 值
+func parseBool(s string) bool {
+	return s == "true" || s == "1" || s == "yes"
+}
+
+// parseInt 解析 int 值
+func parseInt(s string) (int, error) {
+	return strconv.Atoi(s)
 }
 
 // 确保类型实现了接口

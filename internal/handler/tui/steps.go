@@ -48,7 +48,47 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.Action = value
 			return nil
 		},
-		Next: NextStep(StepInstallType),
+		Next: func(cfg *config.Config) Step {
+			switch cfg.Action {
+			case types.ActionInstall, types.ActionUpgrade:
+				// 安装/升级：检测镜像源
+				return StepMirrorCheck
+			case types.ActionUninstall:
+				// 卸载：直接到容器名称
+				return StepContainerName
+			default:
+				return StepInstallType
+			}
+		},
+	},
+
+	// ========== 镜像源检测 ==========
+	StepMirrorCheck: {
+		Type:     StepTypeProgress,
+		TitleKey: "registry_check",
+		Finish: func(cfg *config.Config, _ string) error {
+			// 检测两个镜像源的延迟
+			dockerHubLatency := config.TestRegistryLatency(types.RegistryDockerHub)
+			aliYunLatency := config.TestRegistryLatency(types.RegistryAliYun)
+
+			// 存储检测结果
+			cfg.State["docker_hub_latency"] = dockerHubLatency
+			cfg.State["aliyun_latency"] = aliYunLatency
+
+			// 如果都不可用，记录错误但不立即返回
+			if dockerHubLatency == 0 && aliYunLatency == 0 {
+				cfg.Registry = "unavailable"
+				cfg.State["mirror_check_error"] = i18n.T("no_registry_available")
+			}
+
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			if cfg.Registry == "unavailable" {
+				return StepError
+			}
+			return StepRegistry
+		},
 	},
 
 	// ========== 安装方式 ==========
@@ -150,16 +190,38 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "select_registry",
 		Options: func(cfg *config.Config) []OptionItem {
+			// 从 State 中读取检测结果
+			dockerHubLatency, _ := cfg.State["docker_hub_latency"].(int)
+			aliYunLatency, _ := cfg.State["aliyun_latency"].(int)
+
+			// 构建描述（包含延迟信息）
+			var dockerHubDesc, aliYunDesc string
+			var dockerHubDisabled, aliYunDisabled bool
+
+			if dockerHubLatency > 0 {
+				dockerHubDesc = i18n.T("docker_hub_desc") + i18n.Tf("registry_latency", dockerHubLatency)
+			} else {
+				dockerHubDesc = i18n.T("docker_hub_desc") + i18n.T("registry_unavailable")
+				dockerHubDisabled = true
+			}
+
+			if aliYunLatency > 0 {
+				aliYunDesc = i18n.T("aliyun_desc") + i18n.Tf("registry_latency", aliYunLatency)
+			} else {
+				aliYunDesc = i18n.T("aliyun_desc") + i18n.T("registry_unavailable")
+				aliYunDisabled = true
+			}
+
 			return []OptionItem{
-				{Value: types.RegistryDockerHub, Label: "docker_hub", Description: "docker_hub_desc"},
-				{Value: types.RegistryAliYun, Label: "aliyun", Description: "aliyun_desc"},
+				{Value: types.RegistryDockerHub, Label: "docker_hub", Description: dockerHubDesc, Disabled: dockerHubDisabled},
+				{Value: types.RegistryAliYun, Label: "aliyun", Description: aliYunDesc, Disabled: aliYunDisabled},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.Registry = value
 			return nil
 		},
-		Next: NextStep(StepDockerConnection),
+		Next: NextStep(StepAction),
 	},
 
 	// ========== Docker 连接方式 ==========
@@ -343,15 +405,4 @@ func GetStepDef(step Step) StepDefinition {
 		return def
 	}
 	return StepDefinition{Type: StepTypeError, TitleKey: "unknown_step"}
-}
-
-// GetPrevStep 获取上一步
-func GetPrevStep(step Step) Step {
-	if prev, ok := prevStepMap[step]; ok {
-		return prev
-	}
-	if step > StepLanguage {
-		return step - 1
-	}
-	return step
 }

@@ -58,6 +58,9 @@
   "docker_hub_desc": "Docker 官方仓库",
   "aliyun": "阿里云",
   "aliyun_desc": "阿里云镜像，国内下载更快",
+  "registry_unavailable": "; 不可用",
+  "registry_latency": "; 延迟: %dms",
+  "recommended": "推荐",
   "docker_connection": "Docker/Podman 连接",
   "local_sock": "本地 Socket",
   "local_sock_desc": "通过 Unix socket 连接本地 Docker/Podman",
@@ -119,5 +122,6 @@
   "ssh_host": "SSH 主机",
   "confirm_desc": "开始执行安装",
   "cancel_desc": "返回修改配置",
-  "unknown_step": "未知步骤"
+  "unknown_step": "未知步骤",
+  "checking_mirror_sources": "正在检测镜像源连通性..."
 }

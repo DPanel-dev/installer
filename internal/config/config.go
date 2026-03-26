@@ -44,6 +44,9 @@ type Config struct {
 
 	// === 环境检测结果 ===
 	Env *EnvCheck
+
+	// === TUI 临时状态 ===
+	State map[string]any
 }
 
 // Option 配置选项函数
@@ -51,19 +54,15 @@ type Option func(*Config) error
 
 // NewConfig 创建配置（自动检测环境 + 智能默认值）
 func NewConfig(opts ...Option) (*Config, error) {
-	c := &Config{}
+	c := &Config{
+		State: make(map[string]any),
+	}
 
 	// 1. 执行环境检测
 	c.Env = NewEnvCheck()
 
-	// 2. 检测镜像源连通性并设置 Registry
-	if TestRegistryConnectivity(types.RegistryDockerHub) {
-		c.Registry = types.RegistryDockerHub
-	} else if TestRegistryConnectivity(types.RegistryAliYun) {
-		c.Registry = types.RegistryAliYun
-	} else {
-		c.Registry = types.RegistryUnavailable
-	}
+	// 2. 镜像源默认为空，由 TUI 在运行时检测
+	c.Registry = ""
 
 	// 3. 根据环境设置最优默认值
 	// 操作类型
@@ -182,4 +181,17 @@ func (c *Config) GetImageName() string {
 		return fmt.Sprintf("%s/%s:%s", registry, name, tag)
 	}
 	return fmt.Sprintf("%s:%s", name, tag)
+}
+
+// SetStepValue 保存步骤选择值
+func (c *Config) SetStepValue(stepName, value string) {
+	c.State["step_"+stepName] = value
+}
+
+// GetStepValue 获取步骤选择值
+func (c *Config) GetStepValue(stepName string) string {
+	if v, ok := c.State["step_"+stepName].(string); ok {
+		return v
+	}
+	return ""
 }

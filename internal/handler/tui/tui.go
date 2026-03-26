@@ -31,8 +31,8 @@ type TUI struct {
 	// 缓存当前步骤定义
 	currentDef StepDefinition
 
-	// 历史记录：步骤 -> 选中值标签
-	history map[Step]string
+	// 步骤历史（记录访问路径，用于回退）
+	stepHistory []Step
 }
 
 // Option 配置选项函数
@@ -41,9 +41,9 @@ type Option func(*TUI)
 // NewTUI 创建 TUI 实例
 func NewTUI(opts ...Option) *TUI {
 	t := &TUI{
-		width:   80,
-		height:  24,
-		history: make(map[Step]string),
+		width:       80,
+		height:      24,
+		stepHistory: make([]Step, 0),
 	}
 	for _, opt := range opts {
 		opt(t)
@@ -98,6 +98,9 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.width = msg.Width
 		t.height = msg.Height
 		return t, nil
+	case mirrorCheckMsg:
+		// 执行镜像源检测
+		return t.doMirrorCheck()
 	}
 	return t, nil
 }
@@ -148,8 +151,9 @@ func (t *TUI) initStep() {
 	// 重置光标
 	t.cursor = 0
 
-	// 恢复历史选择
-	if savedValue, ok := t.history[t.step]; ok {
+	// 恢复历史选择（如果有）
+	stepName := t.step.String()
+	if savedValue := t.cfg.GetStepValue(stepName); savedValue != "" {
 		switch t.currentDef.Type {
 		case StepTypeMenu, StepTypeConfirm:
 			// 查找并恢复光标位置
@@ -250,9 +254,9 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 记录历史（用于回退时恢复选中状态）
+	// 记录选择值（用于回退时恢复）
 	if value != "" {
-		t.history[t.step] = value
+		t.cfg.SetStepValue(t.step.String(), value)
 	}
 
 	// 执行 Finish
@@ -267,9 +271,53 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 
 	// 确认页面选择取消
 	if t.step == StepConfirm && value == "cancel" {
+		t.stepHistory = nil // 清空历史
 		t.step = StepLanguage
 		t.initStep()
 		return t, nil
+	}
+
+	// 记录当前步骤到历史（进入下一步前）
+	t.stepHistory = append(t.stepHistory, t.step)
+
+	// 获取下一步
+	var nextStep Step
+	if t.currentDef.Next != nil {
+		nextStep = t.currentDef.Next(t.cfg)
+	} else {
+		nextStep = t.step + 1
+	}
+
+	t.step = nextStep
+	t.initStep()
+
+	// 开始安装
+	if t.step == StepInstalling {
+		return t, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return installMsg{}
+		})
+	}
+
+	// 开始镜像源检测
+	if t.step == StepMirrorCheck {
+		return t, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
+			return mirrorCheckMsg{}
+		})
+	}
+
+	return t, nil
+}
+
+// doMirrorCheck 执行镜像源检测
+func (t *TUI) doMirrorCheck() (tea.Model, tea.Cmd) {
+	// 执行 Finish（同步检测）
+	if t.currentDef.Finish != nil {
+		if err := t.currentDef.Finish(t.cfg, ""); err != nil {
+			t.err = err
+			t.step = StepError
+			t.initStep()
+			return t, nil
+		}
 	}
 
 	// 获取下一步
@@ -280,14 +328,6 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 	}
 
 	t.initStep()
-
-	// 开始安装
-	if t.step == StepInstalling {
-		return t, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
-			return installMsg{}
-		})
-	}
-
 	return t, nil
 }
 
@@ -303,7 +343,15 @@ func (t *TUI) goBack() (tea.Model, tea.Cmd) {
 		return t, nil
 	}
 
-	t.step = GetPrevStep(t.step)
+	// 从历史中取出上一步
+	if len(t.stepHistory) == 0 {
+		return t, nil
+	}
+
+	prevStep := t.stepHistory[len(t.stepHistory)-1]
+	t.stepHistory = t.stepHistory[:len(t.stepHistory)-1]
+
+	t.step = prevStep
 	t.initStep()
 	return t, nil
 }
@@ -501,6 +549,7 @@ func isTranslated(s string) bool {
 // ========== 消息类型 ==========
 
 type installMsg struct{}
+type mirrorCheckMsg struct{}
 
 // ========== 接口验证 ==========
 
