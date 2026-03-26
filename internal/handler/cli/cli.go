@@ -109,7 +109,7 @@ func parseFlags(args []string) ([]config.Option, error) {
 
 	// 定义标志
 	var showHelp, showVersion bool
-	var action, language, installType, dpanelVersion, edition, osType, registry string
+	var action, language, installType, dpanelVersion, edition, baseImage, registry string
 	var containerName, dataPath, dockerSock, dockerHost, proxy, dns string
 	var port int
 	var dockerType string
@@ -125,7 +125,7 @@ func parseFlags(args []string) ([]config.Option, error) {
 	fs.StringVar(&installType, "install-type", "", "Install type: container, binary")
 	fs.StringVar(&dpanelVersion, "dpanel-version", "", "DPanel version: community, pro, dev")
 	fs.StringVar(&edition, "edition", "", "Edition: standard, lite")
-	fs.StringVar(&osType, "os", "", "OS: alpine, debian")
+	fs.StringVar(&baseImage, "base-image", "", "Base image: alpine, debian")
 	fs.StringVar(&registry, "registry", "", "Registry: hub, aliyun")
 	fs.StringVar(&containerName, "container-name", "", "Container name")
 	fs.IntVar(&port, "port", 0, "Port (0 for random)")
@@ -171,8 +171,8 @@ func parseFlags(args []string) ([]config.Option, error) {
 	if edition != "" {
 		opts = append(opts, config.WithEdition(edition))
 	}
-	if osType != "" {
-		opts = append(opts, config.WithOS(osType))
+	if baseImage != "" {
+		opts = append(opts, config.WithBaseImage(baseImage))
 	}
 	if registry != "" {
 		opts = append(opts, config.WithRegistry(registry))
@@ -190,23 +190,21 @@ func parseFlags(args []string) ([]config.Option, error) {
 	// Docker 连接
 	switch dockerType {
 	case types.DockerConnLocal:
-		if dockerSock != "" {
-			opts = append(opts, config.WithDockerLocal(dockerSock))
-		} else {
-			opts = append(opts, config.WithDockerLocal(""))
-		}
+		opts = append(opts, config.WithContainerSock(dockerSock))
 	case types.DockerConnTCP:
-		opts = append(opts, config.WithDockerTCP(dockerHost, 2376))
-		if tlsEnabled {
-			opts = append(opts, config.WithDockerTLS(true))
+		opts = append(opts, config.WithContainerTCP(dockerHost, 2376, tlsEnabled))
+		if tlsEnabled && tlsPath != "" {
+			// TLS 证书路径（简化处理）
+			opts = append(opts, config.WithContainerTLS(
+				tlsPath+"/ca.pem",
+				tlsPath+"/cert.pem",
+				tlsPath+"/key.pem",
+			))
 		}
 	case types.DockerConnSSH:
-		opts = append(opts, config.WithDockerSSH(dockerHost, 22, sshUser))
-		if sshPassword != "" {
-			opts = append(opts, config.WithSSHAuth(sshPassword, ""))
-		}
-		if sshKey != "" {
-			opts = append(opts, config.WithSSHAuth("", sshKey))
+		opts = append(opts, config.WithContainerSSH(dockerHost, 22, sshUser))
+		if sshPassword != "" || sshKey != "" {
+			opts = append(opts, config.WithContainerSSHAuth(sshPassword, sshKey))
 		}
 	}
 
@@ -238,7 +236,7 @@ Flags:`)
 	fmt.Println("      --install-type <string>   Install type: container, binary")
 	fmt.Println("      --dpanel-version <string> DPanel version: community, pro, dev")
 	fmt.Println("      --edition <string>        Edition: standard, lite")
-	fmt.Println("      --os <string>             OS: alpine, debian")
+	fmt.Println("      --base-image <string>     Base image: alpine, debian")
 	fmt.Println("      --registry <string>       Registry: hub, aliyun")
 	fmt.Println("      --container-name <string> Container name")
 	fmt.Println("      --port <int>              Port (0 for random)")
