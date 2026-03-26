@@ -454,8 +454,8 @@ func (t *TUI) renderConfirm() string {
 
 	if cfg.InstallType == types.InstallTypeContainer {
 		connType := "local"
-		if cfg.Env.Container != nil {
-			connType = string(cfg.Env.Container.Type)
+		if cfg.Env.ContainerConn != nil {
+			connType = string(cfg.Env.ContainerConn.Type)
 		}
 		details = append(details, [2]string{i18n.T("docker_connection"), connType})
 		if cfg.HTTPProxy != "" {

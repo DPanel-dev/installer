@@ -2,17 +2,31 @@ package types
 
 // === 容器基础镜像系统 ===
 const (
-	OSAlpine = "alpine"
-	OSDebian = "debian"
+	BaseImageAlpine = "alpine"
+	BaseImageDebian = "debian"
 )
 
 // === 镜像仓库 ===
 const (
-	RegistryHub    = "hub"
-	RegistryAliyun = "aliyun"
+	RegistryDockerHub    = "docker.io" // Docker Hub Index
+	RegistryAliYun = "registry.cn-hangzhou.aliyuncs.com"
+	RegistryUnavailable  = "unavailable"
 )
 
-// === Docker 连接类型 ===
+// === 容器引擎类型 ===
+const (
+	ContainerEngineDocker = "docker"
+	ContainerEnginePodman = "podman"
+)
+
+// === 容器连接类型 ===
+const (
+	ContainerConnTypeSock = "sock" // Unix socket / Windows named pipe
+	ContainerConnTypeTCP  = "tcp"  // TCP 连接
+	ContainerConnTypeSSH  = "ssh"  // SSH 连接
+)
+
+// === Docker 连接类型（兼容旧代码） ===
 const (
 	DockerConnLocal = "local"
 	DockerConnTCP   = "tcp"

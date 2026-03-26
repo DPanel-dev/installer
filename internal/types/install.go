@@ -4,5 +4,4 @@ package types
 const (
 	InstallTypeContainer     = "container"
 	InstallTypeBinary        = "binary"
-	InstallTypeInstallDocker = "install_docker"
 )

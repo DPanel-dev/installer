@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
-	"runtime"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/dpanel-dev/installer/internal/types"
 )
@@ -16,30 +18,18 @@ type Config struct {
 	Language string // zh, en
 
 	// === 安装类型 ===
-	InstallType string // container, binary, install_docker
+	InstallType string // container, binary
 
 	// === 版本配置 ===
-	Version  string // community, pro, dev
-	Edition  string // standard, lite
-	OS       string // alpine, debian
-	Registry string // hub, aliyun
+	Version   string // ce 社区版, pe 专业版, be 开发版
+	Edition   string // standard, lite
+	BaseImage string // alpine, debian - 镜像基础系统
+	Registry  string // docker.io, registry.cn-hangzhou.aliyuncs.com, unavailable
 
-	// === 宺器配置 ===
+	// === 容器配置 ===
 	ContainerName string
 	Port          int // 0 = 随机端口
 	DataPath      string
-
-	// === Docker 连接 ===
-	DockerConnType string // local, tcp, ssh
-	DockerSockPath string
-	DockerTCPHost  string
-	DockerTCPPort  int
-	DockerSSHHost  string
-	DockerSSHPort  int
-	DockerSSHUser  string
-	DockerSSHPass  string
-	DockerSSHKey   string
-	DockerTLS      bool
 
 	// === 网络配置 ===
 	DNS        string
@@ -53,7 +43,7 @@ type Config struct {
 	UninstallRemoveData bool
 
 	// === 环境检测结果 ===
-	Env types.EnvCheck
+	Env *EnvCheck
 }
 
 // Option 配置选项函数
@@ -64,114 +54,53 @@ func NewConfig(opts ...Option) (*Config, error) {
 	c := &Config{}
 
 	// 1. 执行环境检测
-	c.detectEnvironment()
+	c.Env = NewEnvCheck()
 
-	// 2. 根据环境设置最优默认值
-	c.applySmartDefaults()
-
-	// 3. 应用用户自定义选项
-	for _, opt := range opts {
-		if err := opt(c); err != nil {
-			return nil, err
-		}
+	// 2. 检测镜像源连通性并设置 Registry
+	if TestRegistryConnectivity(types.RegistryDockerHub) {
+		c.Registry = types.RegistryDockerHub
+	} else if TestRegistryConnectivity(types.RegistryAliYun) {
+		c.Registry = types.RegistryAliYun
+	} else {
+		c.Registry = types.RegistryUnavailable
 	}
 
-	return c, nil
-}
-
-// detectEnvironment 执行环境检测
-func (c *Config) detectEnvironment() {
-	c.Env = types.EnvCheck{
-		OS:   runtime.GOOS,
-		Arch: runtime.GOARCH,
-	}
-
-	// 检测 Docker 引擎类型
-	c.Env.DockerEngine = detectDockerEngineType()
-
-	// 检测 Podman：有命令即可（无守护进程架构）
-	c.Env.PodmanExists = podmanExists()
-
-	// 镜像源连通性在用户选择时实时检测
-}
-
-// TestAndSetRegistry 测试镜像源连通性并设置 Registry
-// 先测试 docker.io，失败则测试阿里云，都失败则 Registry 为空
-func (c *Config) TestAndSetRegistry() {
-	if testRegistryConnectivity("registry.hub.docker.com") {
-		c.Registry = "" // 使用 docker.io
-		return
-	}
-	if testRegistryConnectivity("registry.cn-hangzhou.aliyuncs.com") {
-		c.Registry = "aliyun"
-		return
-	}
-	c.Registry = "" // 都不可用，保持空表示无法安装
-}
-
-// CanInstall 检查是否可以执行安装操作（Registry 非空或已测试可用）
-func (c *Config) CanInstall() bool {
-	// 如果 Registry 为空，实时测试连通性
-	if c.Registry == "" {
-		c.TestAndSetRegistry()
-	}
-	// 再次检查：如果仍为空，说明两个源都不可用
-	// 但空值本身也可能表示使用默认 docker.io，需要额外标记
-	return c.Registry != "" || testRegistryConnectivity("registry.hub.docker.com")
-}
-
-// CanUpgrade 检查是否可以执行升级操作
-func (c *Config) CanUpgrade() bool {
-	return c.CanInstall()
-}
-
-// applySmartDefaults 根据环境设置最优默认值
-func (c *Config) applySmartDefaults() {
+	// 3. 根据环境设置最优默认值
 	// 操作类型
-	c.Action = "install"
+	c.Action = types.ActionInstall
 
 	// 语言
-	c.Language = "zh"
+	c.Language = types.LanguageZh
 
 	// ===== 安装类型 =====
-	if c.Env.DockerEngine == types.DockerEngineLocal {
-		c.InstallType = "container"
-		c.DockerConnType = "local"
-		c.DockerSockPath = "/var/run/docker.sock"
-	} else if c.Env.PodmanExists {
-		c.InstallType = "container"
-		c.DockerConnType = "local"
-		c.DockerSockPath = getPodmanSockPath()
+	if c.Env.ContainerConn != nil {
+		c.InstallType = types.InstallTypeContainer
 	} else {
-		if c.Env.OS == "linux" {
-			c.InstallType = "install_docker"
-		} else {
-			c.InstallType = "binary"
-		}
+		c.InstallType = types.InstallTypeBinary
 	}
 
 	// ===== 版本配置 =====
-	c.Version = "community"
-	c.Edition = "lite"
-	c.OS = "debian"
+	c.Version = types.VersionCommunity
+	c.Edition = types.EditionLite
 
-	// ===== 镜像源：默认为空（使用 docker.io）， =====
-	// 用户可在 TUI 中根据网络情况选择
-	c.Registry = ""
+	// 基础镜像：二进制安装时根据系统 libc 类型自动选择
+	if c.InstallType == types.InstallTypeBinary {
+		if IsMusl() {
+			c.BaseImage = types.BaseImageAlpine
+		} else {
+			c.BaseImage = types.BaseImageDebian
+		}
+	} else {
+		c.BaseImage = types.BaseImageAlpine
+	}
 
 	// ===== 容器配置 =====
 	c.ContainerName = "dpanel"
 	c.Port = 0
 
 	// 数据路径根据系统选择
-	switch c.Env.OS {
-	case "windows":
-		c.DataPath = `C:\dpanel\data`
-	case "darwin":
-		c.DataPath = "/Users/Shared/dpanel"
-	default:
-		c.DataPath = "/home/dpanel"
-	}
+	homeDir, _ := os.UserHomeDir()
+	c.DataPath = filepath.Join(homeDir, "dpanel", "data")
 
 	// ===== 网络配置 =====
 	c.DNS = ""
@@ -181,6 +110,15 @@ func (c *Config) applySmartDefaults() {
 	// ===== 升级/卸载配置 =====
 	c.UpgradeBackup = true
 	c.UninstallRemoveData = false
+
+	// 4. 应用用户自定义选项
+	for _, opt := range opts {
+		if err := opt(c); err != nil {
+			return nil, err
+		}
+	}
+
+	return c, nil
 }
 
 // ApplyOptions 批量应用选项
@@ -193,39 +131,50 @@ func (c *Config) ApplyOptions(opts ...Option) error {
 	return nil
 }
 
-// IsContainerAvailable 容器安装是否可用
-func (c *Config) IsContainerAvailable() bool {
-	return c.Env.ContainerAvailable()
-}
-
 // GetRegistry 获取镜像仓库地址
 func (c *Config) GetRegistry() string {
-	if c.Registry == "aliyun" {
-		return "registry.cn-hangzhou.aliyuncs.com"
+	if c.Registry == types.RegistryDockerHub || c.Registry == types.RegistryUnavailable {
+		return ""
 	}
-	return ""
+	return c.Registry
 }
 
 // GetImageName 获取镜像名称
+// 组合规则：版本(ce/pe/be) + 版本类型(standard/lite) + 基础镜像(alpine/debian)
 func (c *Config) GetImageName() string {
 	registry := c.GetRegistry()
 
+	// 1. 确定镜像名称
 	var name string
 	switch c.Version {
-	case "community":
-		name = "dpanel/dpanel"
-	case "pro":
-		name = "dpanel/dpanel-pe"
+	case types.VersionPE:
+		name = types.ImageNamePE
 	default:
-		name = "dpanel/dpanel"
+		name = types.ImageNameCE
 	}
 
-	var tag string
-	if c.Edition == "lite" {
-		tag = "lite"
-	} else if c.Version == "dev" {
-		tag = "beta"
-	} else {
+	// 2. 组合 Tag
+	// 格式：[beta-][lite-][debian]
+	var tagParts []string
+
+	// 开发版前缀
+	if c.Version == types.VersionBE {
+		tagParts = append(tagParts, "beta")
+	}
+
+	// 精简版
+	if c.Edition == types.EditionLite {
+		tagParts = append(tagParts, "lite")
+	}
+
+	// Debian 基础镜像
+	if c.BaseImage == types.BaseImageDebian {
+		tagParts = append(tagParts, "debian")
+	}
+
+	// 组合 Tag
+	tag := strings.Join(tagParts, "-")
+	if tag == "" {
 		tag = "latest"
 	}
 

@@ -29,7 +29,7 @@ const (
 	StepInstallType
 	StepVersion
 	StepEdition
-	StepOS
+	StepBaseImage
 	StepRegistry
 	StepDockerConnection
 	StepDockerConfig
@@ -90,8 +90,8 @@ var prevStepMap = map[Step]Step{
 	StepInstallType:      StepAction,
 	StepVersion:          StepInstallType,
 	StepEdition:          StepVersion,
-	StepOS:               StepEdition,
-	StepRegistry:         StepOS,
+	StepBaseImage:        StepEdition,
+	StepRegistry:         StepBaseImage,
 	StepDockerConnection: StepRegistry,
 	StepDockerConfig:     StepDockerConnection,
 	StepTLSConfig:        StepDockerConfig,

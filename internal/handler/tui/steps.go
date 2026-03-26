@@ -56,7 +56,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "install_method",
 		Options: func(cfg *config.Config) []OptionItem {
-			if cfg.IsContainerAvailable() {
+			if cfg.Env.ContainerConn != nil {
 				return []OptionItem{
 					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
 					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
@@ -151,8 +151,8 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_registry",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: types.RegistryHub, Label: "docker_hub", Description: "docker_hub_desc"},
-				{Value: types.RegistryAliyun, Label: "aliyun", Description: "aliyun_desc"},
+				{Value: types.RegistryDockerHub, Label: "docker_hub", Description: "docker_hub_desc"},
+				{Value: types.RegistryAliYun, Label: "aliyun", Description: "aliyun_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
@@ -175,19 +175,19 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Finish: func(cfg *config.Config, value string) error {
 			// 初始化容器连接配置
-			if cfg.Env.Container == nil {
-				cfg.Env.Container = &types.ContainerConn{
+			if cfg.Env.ContainerConn == nil {
+				cfg.Env.ContainerConn = &config.ContainerConn{
 					Engine: types.ContainerEngineDocker,
 				}
 			}
-			cfg.Env.Container.Type = types.ContainerConnType(value)
+			cfg.Env.ContainerConn.Type = value
 			return nil
 		},
 		Next: func(cfg *config.Config) Step {
-			if cfg.Env.Container == nil {
+			if cfg.Env.ContainerConn == nil {
 				return StepContainerName
 			}
-			switch cfg.Env.Container.Type {
+			switch cfg.Env.ContainerConn.Type {
 			case types.ContainerConnTypeTCP:
 				return StepDockerConfig
 			case types.ContainerConnTypeSSH:
@@ -205,13 +205,13 @@ var StepDefinitions = map[Step]StepDefinition{
 		Placeholder:  "tcp://localhost:2375",
 		DefaultValue: "tcp://localhost:2375",
 		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.Container == nil {
-				cfg.Env.Container = &types.ContainerConn{
+			if cfg.Env.ContainerConn == nil {
+				cfg.Env.ContainerConn = &config.ContainerConn{
 					Engine: types.ContainerEngineDocker,
 					Type:   types.ContainerConnTypeTCP,
 				}
 			}
-			cfg.Env.Container.Address = value
+			cfg.Env.ContainerConn.Address = value
 			return nil
 		},
 		Next: NextStep(StepTLSConfig),
@@ -228,8 +228,8 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.Container != nil {
-				cfg.Env.Container.TLSVerify = value == "yes"
+			if cfg.Env.ContainerConn != nil {
+				cfg.Env.ContainerConn.TLSVerify = value == "yes"
 			}
 			return nil
 		},
@@ -242,13 +242,13 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey:    "ssh_host",
 		Placeholder: "ssh://host:22",
 		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.Container == nil {
-				cfg.Env.Container = &types.ContainerConn{
+			if cfg.Env.ContainerConn == nil {
+				cfg.Env.ContainerConn = &config.ContainerConn{
 					Engine: types.ContainerEngineDocker,
 					Type:   types.ContainerConnTypeSSH,
 				}
 			}
-			cfg.Env.Container.Address = value
+			cfg.Env.ContainerConn.Address = value
 			return nil
 		},
 		Next: NextStep(StepContainerName),

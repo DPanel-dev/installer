@@ -121,52 +121,30 @@ func (e *Engine) checkEnvironment() error {
 func (e *Engine) checkDocker() error {
 	slog.Info("Checking Docker/Podman availability")
 
-	// Check if docker command exists
-	dockerExists := false
-	if _, err := exec.LookPath("docker"); err == nil {
-		dockerExists = true
-		slog.Info("Docker command found")
+	container := e.Config.Env.ContainerConn
+	if container == nil {
+		return fmt.Errorf("no container runtime available")
 	}
 
-	podmanExists := false
-	if _, err := exec.LookPath("podman"); err == nil {
-		podmanExists = true
-		slog.Info("Podman command found")
+	// 确定运行时命令
+	runtimeCmd := "docker"
+	if container.Engine == types.ContainerEnginePodman {
+		runtimeCmd = "podman"
 	}
 
-	if !dockerExists && !podmanExists {
-		return fmt.Errorf("neither docker nor podman found in PATH")
+	// 检查命令是否存在
+	if _, err := exec.LookPath(runtimeCmd); err != nil {
+		return fmt.Errorf("%s command not found", runtimeCmd)
 	}
 
-	// Test docker service if it's the configured type
-	if e.Config.DockerConnType == types.DockerConnLocal {
-		// Try docker first
-		if dockerExists {
-			slog.Info("Testing Docker service")
-			if err := e.testDockerService("docker"); err != nil {
-				slog.Warn("Docker service test failed", "error", err)
-				// Try podman as fallback
-				if podmanExists {
-					slog.Info("Trying Podman service")
-					if err := e.testDockerService("podman"); err != nil {
-						return fmt.Errorf("neither Docker nor Podman service is available: %w", err)
-					}
-					slog.Info("Podman service is available")
-					return nil
-				}
-				return fmt.Errorf("Docker service is not available: %w", err)
-			}
-			slog.Info("Docker service is available")
-			return nil
-		} else if podmanExists {
-			// Only podman available
-			slog.Info("Testing Podman service")
-			if err := e.testDockerService("podman"); err != nil {
-				return fmt.Errorf("Podman service is not available: %w", err)
-			}
-			slog.Info("Podman service is available")
-			return nil
+	slog.Info("Container runtime found", "engine", container.Engine)
+
+	// 本地连接需要测试服务可用性
+	if container.IsLocal() {
+		if err := e.testDockerService(runtimeCmd); err != nil {
+			return fmt.Errorf("%s service is not available: %w", runtimeCmd, err)
 		}
+		slog.Info("Container service is available", "engine", container.Engine)
 	}
 
 	return nil
@@ -199,93 +177,109 @@ func (e *Engine) testDockerService(runtime string) error {
 
 // checkDockerConnection verifies Docker connection
 func (e *Engine) checkDockerConnection() error {
-	slog.Info("Checking docker connection", "type", e.Config.DockerConnType)
+	container := e.Config.Env.ContainerConn
+	if container == nil {
+		return fmt.Errorf("no container connection configured")
+	}
 
-	switch e.Config.DockerConnType {
-	case types.DockerConnLocal:
-		return e.checkLocalConnection()
-	case types.DockerConnTCP:
-		return e.checkTCPConnection()
-	case types.DockerConnSSH:
-		return e.checkSSHConnection()
+	slog.Info("Checking container connection", "type", container.Type, "address", container.Address)
+
+	switch container.Type {
+	case types.ContainerConnTypeSock:
+		return e.checkSockConnection(container)
+	case types.ContainerConnTypeTCP:
+		return e.checkTCPConnection(container)
+	case types.ContainerConnTypeSSH:
+		return e.checkSSHConnection(container)
 	default:
-		return fmt.Errorf("unknown docker connection type: %s", e.Config.DockerConnType)
+		return fmt.Errorf("unknown container connection type: %s", container.Type)
 	}
 }
 
-// checkLocalConnection checks local socket file
-func (e *Engine) checkLocalConnection() error {
-	sockPath := e.Config.DockerSockPath
-	if sockPath == "" {
-		sockPath = "/var/run/docker.sock"
+// checkSockConnection checks local socket file
+func (e *Engine) checkSockConnection(conn *config.ContainerConn) error {
+	address := conn.Address
+	if address == "" {
+		address = "unix:///var/run/docker.sock"
 	}
-	e.Config.DockerSockPath = sockPath
 
-	slog.Info("Checking local docker sock", "path", sockPath)
+	// 提取 socket 路径
+	var sockPath string
+	if strings.HasPrefix(address, "unix://") {
+		sockPath = address[7:]
+	} else if strings.HasPrefix(address, "npipe://") {
+		// Windows named pipe, 无需检查文件
+		slog.Info("Windows named pipe connection", "address", address)
+		return nil
+	} else {
+		sockPath = address
+	}
+
+	slog.Info("Checking local socket", "path", sockPath)
 
 	// Check if socket file exists
 	if _, err := os.Stat(sockPath); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("docker socket file not found: %s", sockPath)
+			return fmt.Errorf("socket file not found: %s", sockPath)
 		}
-		return fmt.Errorf("cannot access docker socket: %w", err)
+		return fmt.Errorf("cannot access socket: %w", err)
 	}
 
 	return nil
 }
 
 // checkTCPConnection checks TCP connectivity
-func (e *Engine) checkTCPConnection() error {
-	if e.Config.DockerTCPHost == "" {
-		return fmt.Errorf("docker host is required for TCP connection")
+func (e *Engine) checkTCPConnection(conn *config.ContainerConn) error {
+	address := conn.Address
+	if address == "" {
+		return fmt.Errorf("TCP address is required")
 	}
 
-	slog.Info("Checking TCP connection", "host", e.Config.DockerTCPHost)
+	slog.Info("Checking TCP connection", "address", address)
 
 	// Test TCP connection by trying to execute docker command with -H flag
 	runtime := e.getDockerRuntime()
-	host := fmt.Sprintf("%s:%d", e.Config.DockerTCPHost, e.Config.DockerTCPPort)
-	testCmd := exec.Command(runtime, "-H", host, "ps")
+	testCmd := exec.Command(runtime, "-H", address, "ps")
 	output, err := testCmd.CombinedOutput()
 
 	if err != nil {
 		slog.Error("TCP connection test failed", "error", err, "output", string(output))
-		return fmt.Errorf("TCP connection to Docker daemon failed: %w", err)
+		return fmt.Errorf("TCP connection to container daemon failed: %w", err)
 	}
 
-	slog.Info("TCP connection successful", "host", e.Config.DockerTCPHost)
+	slog.Info("TCP connection successful", "address", address)
 	return nil
 }
 
 // checkSSHConnection checks SSH connectivity
-func (e *Engine) checkSSHConnection() error {
-	if e.Config.DockerSSHHost == "" {
-		return fmt.Errorf("docker host is required for SSH connection")
+func (e *Engine) checkSSHConnection(conn *config.ContainerConn) error {
+	address := conn.Address
+	if address == "" {
+		return fmt.Errorf("SSH address is required")
 	}
-	if e.Config.DockerSSHUser == "" {
-		return fmt.Errorf("SSH username is required for SSH connection")
+	if conn.SSHUsername == "" {
+		return fmt.Errorf("SSH username is required")
 	}
 
-	slog.Info("Checking SSH connection", "host", e.Config.DockerSSHHost, "user", e.Config.DockerSSHUser)
+	slog.Info("Checking SSH connection", "address", address, "user", conn.SSHUsername)
 
-	// Test SSH connection by trying to execute docker command via SSH
-	// Build SSH command: ssh user@host docker ps
+	// Build SSH command
 	var sshCmd []string
 	sshCmd = append(sshCmd, "ssh")
 
 	// Add SSH options
-	if e.Config.DockerSSHKey != "" {
-		sshCmd = append(sshCmd, "-i", e.Config.DockerSSHKey)
+	if conn.SSHKeyPath != "" {
+		sshCmd = append(sshCmd, "-i", conn.SSHKeyPath)
 	}
 	sshCmd = append(sshCmd, "-o", "StrictHostKeyChecking=no")
 	sshCmd = append(sshCmd, "-o", "UserKnownHostsFile=/dev/null")
 
-	// Add host and user
-	host := fmt.Sprintf("%s@%s", e.Config.DockerSSHUser, e.Config.DockerSSHHost)
-	if e.Config.DockerSSHPort > 0 {
-		host = fmt.Sprintf("%s@%s:%d", e.Config.DockerSSHUser, e.Config.DockerSSHHost, e.Config.DockerSSHPort)
+	// Add address (already contains ssh:// prefix, need to extract)
+	sshHost := address
+	if strings.HasPrefix(address, "ssh://") {
+		sshHost = address[6:]
 	}
-	sshCmd = append(sshCmd, host)
+	sshCmd = append(sshCmd, fmt.Sprintf("%s@%s", conn.SSHUsername, sshHost))
 
 	// Add docker command
 	sshCmd = append(sshCmd, "docker", "ps")
@@ -296,10 +290,10 @@ func (e *Engine) checkSSHConnection() error {
 
 	if err != nil {
 		slog.Error("SSH connection test failed", "error", err, "output", string(output))
-		return fmt.Errorf("SSH connection to Docker daemon failed: %w", err)
+		return fmt.Errorf("SSH connection to container daemon failed: %w", err)
 	}
 
-	slog.Info("SSH connection successful", "host", e.Config.DockerSSHHost)
+	slog.Info("SSH connection successful", "address", address)
 	return nil
 }
 
@@ -347,13 +341,13 @@ func (e *Engine) logInstallationConfig() {
 	slog.Info("Install Type", "type", cfg.InstallType)
 	slog.Info("Version", "version", cfg.Version)
 	slog.Info("Edition", "edition", cfg.Edition)
-	slog.Info("OS", "os", cfg.OS)
+	slog.Info("BaseImage", "baseImage", cfg.BaseImage)
 	slog.Info("Registry", "registry", cfg.Registry)
 	slog.Info("Container Name", "name", cfg.ContainerName)
 	slog.Info("Port", "port", cfg.Port)
 	slog.Info("Data Path", "path", cfg.DataPath)
-	if cfg.DockerConnType != "" {
-		slog.Info("Docker Connection", "type", cfg.DockerConnType)
+	if cfg.Env.ContainerConn != nil {
+		slog.Info("Container Connection", "type", cfg.Env.ContainerConn.Type, "address", cfg.Env.ContainerConn.Address)
 	}
 	if cfg.HTTPProxy != "" {
 		slog.Info("HTTP Proxy", "proxy", cfg.HTTPProxy)
@@ -410,8 +404,8 @@ func (e *Engine) saveInstallationLog(command string) error {
 	fmt.Fprintf(file, "Container Name: %s\n", e.Config.ContainerName)
 	fmt.Fprintf(file, "Port: %d\n", e.Config.Port)
 	fmt.Fprintf(file, "Data Path: %s\n", e.Config.DataPath)
-	if e.Config.DockerConnType != "" {
-		fmt.Fprintf(file, "Docker Connection: %s\n", e.Config.DockerConnType)
+	if e.Config.Env.ContainerConn != nil {
+		fmt.Fprintf(file, "Container Connection: %s\n", e.Config.Env.ContainerConn.Address)
 	}
 	fmt.Fprintf(file, "\n=== Execution Command ===\n")
 	fmt.Fprintf(file, "%s\n", command)
@@ -556,7 +550,12 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	}
 
 	// Volumes
-	parts = append(parts, "-v", fmt.Sprintf("%s:/var/run/docker.sock", cfg.DockerSockPath))
+	// 从 Container 配置获取 socket 路径
+	sockPath := "/var/run/docker.sock" // 默认值
+	if cfg.Env.ContainerConn != nil && strings.HasPrefix(cfg.Env.ContainerConn.Address, "unix://") {
+		sockPath = cfg.Env.ContainerConn.Address[7:]
+	}
+	parts = append(parts, "-v", fmt.Sprintf("%s:/var/run/docker.sock", sockPath))
 	parts = append(parts, "-v", fmt.Sprintf("%s:/dpanel", cfg.DataPath))
 
 	// Image

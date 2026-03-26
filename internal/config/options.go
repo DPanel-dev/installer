@@ -103,14 +103,14 @@ func WithDataPath(path string) Option {
 // WithContainerSock 设置本地 socket 连接
 func WithContainerSock(address string) Option {
 	return func(c *Config) error {
-		if c.Env.Container == nil {
-			c.Env.Container = &types.ContainerConn{}
+		if c.Env.ContainerConn == nil {
+			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
 		}
-		c.Env.Container.Type = types.ContainerConnTypeSock
+		c.Env.ContainerConn.Type = types.ContainerConnTypeSock
 		if address == "" {
-			c.Env.Container.Address = "unix:///var/run/docker.sock"
+			c.Env.ContainerConn.Address = "unix:///var/run/docker.sock"
 		} else {
-			c.Env.Container.Address = address
+			c.Env.ContainerConn.Address = address
 		}
 		return nil
 	}
@@ -122,12 +122,12 @@ func WithContainerTCP(host string, port int, tlsVerify bool) Option {
 		if host == "" {
 			return fmt.Errorf("TCP host cannot be empty")
 		}
-		if c.Env.Container == nil {
-			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		if c.Env.ContainerConn == nil {
+			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
 		}
-		c.Env.Container.Type = types.ContainerConnTypeTCP
-		c.Env.Container.Address = fmt.Sprintf("tcp://%s:%d", host, port)
-		c.Env.Container.TLSVerify = tlsVerify
+		c.Env.ContainerConn.Type = types.ContainerConnTypeTCP
+		c.Env.ContainerConn.Address = fmt.Sprintf("tcp://%s:%d", host, port)
+		c.Env.ContainerConn.TLSVerify = tlsVerify
 		return nil
 	}
 }
@@ -138,12 +138,12 @@ func WithContainerSSH(host string, port int, username string) Option {
 		if host == "" {
 			return fmt.Errorf("SSH host cannot be empty")
 		}
-		if c.Env.Container == nil {
-			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		if c.Env.ContainerConn == nil {
+			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
 		}
-		c.Env.Container.Type = types.ContainerConnTypeSSH
-		c.Env.Container.Address = fmt.Sprintf("ssh://%s:%d", host, port)
-		c.Env.Container.SSHUsername = username
+		c.Env.ContainerConn.Type = types.ContainerConnTypeSSH
+		c.Env.ContainerConn.Address = fmt.Sprintf("ssh://%s:%d", host, port)
+		c.Env.ContainerConn.SSHUsername = username
 		return nil
 	}
 }
@@ -151,13 +151,13 @@ func WithContainerSSH(host string, port int, username string) Option {
 // WithContainerTLS 设置 TLS 配置
 func WithContainerTLS(caCert, cert, key string) Option {
 	return func(c *Config) error {
-		if c.Env.Container == nil {
-			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		if c.Env.ContainerConn == nil {
+			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
 		}
-		c.Env.Container.TLSVerify = true
-		c.Env.Container.TLSCACert = caCert
-		c.Env.Container.TLSCert = cert
-		c.Env.Container.TLSKey = key
+		c.Env.ContainerConn.TLSVerify = true
+		c.Env.ContainerConn.TLSCACert = caCert
+		c.Env.ContainerConn.TLSCert = cert
+		c.Env.ContainerConn.TLSKey = key
 		return nil
 	}
 }
@@ -165,11 +165,11 @@ func WithContainerTLS(caCert, cert, key string) Option {
 // WithContainerSSHAuth 设置 SSH 认证
 func WithContainerSSHAuth(password, keyPath string) Option {
 	return func(c *Config) error {
-		if c.Env.Container == nil {
-			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		if c.Env.ContainerConn == nil {
+			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
 		}
-		c.Env.Container.SSHPassword = password
-		c.Env.Container.SSHKeyPath = keyPath
+		c.Env.ContainerConn.SSHPassword = password
+		c.Env.ContainerConn.SSHKeyPath = keyPath
 		return nil
 	}
 }
