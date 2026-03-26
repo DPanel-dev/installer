@@ -50,15 +50,15 @@ func WithEdition(edition string) Option {
 	}
 }
 
-// WithOS 设置构建系统
-func WithOS(os string) Option {
+// WithBaseImage 设置基础镜像系统
+func WithBaseImage(baseImage string) Option {
 	return func(c *Config) error {
-		c.OS = os
+		c.BaseImage = baseImage
 		return nil
 	}
 }
 
-// WithRegistry 设置镜像源
+// WithRegistry 设置镜像仓库
 func WithRegistry(registry string) Option {
 	return func(c *Config) error {
 		c.Registry = registry
@@ -98,60 +98,78 @@ func WithDataPath(path string) Option {
 	}
 }
 
-// === Docker 连接 Options ===
+// === 容器连接 Options ===
 
-// WithDockerLocal 设置本地 Docker 连接
-func WithDockerLocal(sockPath string) Option {
+// WithContainerSock 设置本地 socket 连接
+func WithContainerSock(address string) Option {
 	return func(c *Config) error {
-		if sockPath == "" {
-			sockPath = "/var/run/docker.sock"
+		if c.Env.Container == nil {
+			c.Env.Container = &types.ContainerConn{}
 		}
-		c.DockerConnType = types.DockerConnLocal
-		c.DockerSockPath = sockPath
+		c.Env.Container.Type = types.ContainerConnTypeSock
+		if address == "" {
+			c.Env.Container.Address = "unix:///var/run/docker.sock"
+		} else {
+			c.Env.Container.Address = address
+		}
 		return nil
 	}
 }
 
-// WithDockerTCP 设置 TCP 连接
-func WithDockerTCP(host string, port int) Option {
+// WithContainerTCP 设置 TCP 连接
+func WithContainerTCP(host string, port int, tlsVerify bool) Option {
 	return func(c *Config) error {
 		if host == "" {
 			return fmt.Errorf("TCP host cannot be empty")
 		}
-		c.DockerConnType = types.DockerConnTCP
-		c.DockerTCPHost = host
-		c.DockerTCPPort = port
+		if c.Env.Container == nil {
+			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		}
+		c.Env.Container.Type = types.ContainerConnTypeTCP
+		c.Env.Container.Address = fmt.Sprintf("tcp://%s:%d", host, port)
+		c.Env.Container.TLSVerify = tlsVerify
 		return nil
 	}
 }
 
-// WithDockerSSH 设置 SSH 连接
-func WithDockerSSH(host string, port int, user string) Option {
+// WithContainerSSH 设置 SSH 连接
+func WithContainerSSH(host string, port int, username string) Option {
 	return func(c *Config) error {
 		if host == "" {
 			return fmt.Errorf("SSH host cannot be empty")
 		}
-		c.DockerConnType = types.DockerConnSSH
-		c.DockerSSHHost = host
-		c.DockerSSHPort = port
-		c.DockerSSHUser = user
+		if c.Env.Container == nil {
+			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		}
+		c.Env.Container.Type = types.ContainerConnTypeSSH
+		c.Env.Container.Address = fmt.Sprintf("ssh://%s:%d", host, port)
+		c.Env.Container.SSHUsername = username
 		return nil
 	}
 }
 
-// WithDockerTLS 设置 TLS 配置
-func WithDockerTLS(enabled bool) Option {
+// WithContainerTLS 设置 TLS 配置
+func WithContainerTLS(caCert, cert, key string) Option {
 	return func(c *Config) error {
-		c.DockerTLS = enabled
+		if c.Env.Container == nil {
+			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		}
+		c.Env.Container.TLSVerify = true
+		c.Env.Container.TLSCACert = caCert
+		c.Env.Container.TLSCert = cert
+		c.Env.Container.TLSKey = key
 		return nil
 	}
 }
 
-// WithSSHAuth 设置 SSH 认证
-func WithSSHAuth(password, keyPath string) Option {
+// WithContainerSSHAuth 设置 SSH 认证
+func WithContainerSSHAuth(password, keyPath string) Option {
 	return func(c *Config) error {
-		c.DockerSSHPass = password
-		c.DockerSSHKey = keyPath
+		if c.Env.Container == nil {
+			c.Env.Container = &types.ContainerConn{Engine: types.ContainerEngineDocker}
+		}
+		c.Env.Container.SSHPassword = password
+		c.Env.Container.SSHKeyPath = keyPath
 		return nil
 	}
 }
