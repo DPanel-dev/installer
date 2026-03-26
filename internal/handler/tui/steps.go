@@ -37,7 +37,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "select_action",
 		Options: func(cfg *config.Config) []OptionItem {
-			canInstall := cfg.CanInstall()
+			canInstall := cfg.Registry != "unavailable"
 			return []OptionItem{
 				{Value: types.ActionInstall, Label: "install_panel", Description: "install_panel_desc", Disabled: !canInstall},
 				{Value: types.ActionUpgrade, Label: "upgrade_panel", Description: "upgrade_panel_desc", Disabled: !canInstall},
@@ -124,22 +124,22 @@ var StepDefinitions = map[Step]StepDefinition{
 			if cfg.InstallType == types.InstallTypeBinary {
 				return StepContainerName
 			}
-			return StepOS
+			return StepBaseImage
 		},
 	},
 
-	// ========== 操作系统 ==========
-	StepOS: {
+	// ========== 基础镜像系统 ==========
+	StepBaseImage: {
 		Type:     StepTypeMenu,
-		TitleKey: "select_os",
+		TitleKey: "select_base_image",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: types.OSAlpine, Label: "alpine", Description: "alpine_desc"},
-				{Value: types.OSDebian, Label: "debian", Description: "debian_desc"},
+				{Value: types.BaseImageAlpine, Label: "alpine", Description: "alpine_desc"},
+				{Value: types.BaseImageDebian, Label: "debian", Description: "debian_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.OS = value
+			cfg.BaseImage = value
 			return nil
 		},
 		Next: NextStep(StepRegistry),
@@ -168,20 +168,29 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "docker_connection",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
-				{Value: types.DockerConnLocal, Label: "local_sock", Description: "local_sock_desc"},
-				{Value: types.DockerConnTCP, Label: "remote_tcp", Description: "remote_tcp_desc"},
-				{Value: types.DockerConnSSH, Label: "remote_ssh", Description: "remote_ssh_desc"},
+				{Value: string(types.ContainerConnTypeSock), Label: "local_sock", Description: "local_sock_desc"},
+				{Value: string(types.ContainerConnTypeTCP), Label: "remote_tcp", Description: "remote_tcp_desc"},
+				{Value: string(types.ContainerConnTypeSSH), Label: "remote_ssh", Description: "remote_ssh_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.DockerConnType = value
+			// 初始化容器连接配置
+			if cfg.Env.Container == nil {
+				cfg.Env.Container = &types.ContainerConn{
+					Engine: types.ContainerEngineDocker,
+				}
+			}
+			cfg.Env.Container.Type = types.ContainerConnType(value)
 			return nil
 		},
 		Next: func(cfg *config.Config) Step {
-			switch cfg.DockerConnType {
-			case types.DockerConnTCP:
+			if cfg.Env.Container == nil {
+				return StepContainerName
+			}
+			switch cfg.Env.Container.Type {
+			case types.ContainerConnTypeTCP:
 				return StepDockerConfig
-			case types.DockerConnSSH:
+			case types.ContainerConnTypeSSH:
 				return StepSSHConfig
 			default:
 				return StepContainerName
@@ -196,7 +205,13 @@ var StepDefinitions = map[Step]StepDefinition{
 		Placeholder:  "tcp://localhost:2375",
 		DefaultValue: "tcp://localhost:2375",
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.DockerTCPHost = value
+			if cfg.Env.Container == nil {
+				cfg.Env.Container = &types.ContainerConn{
+					Engine: types.ContainerEngineDocker,
+					Type:   types.ContainerConnTypeTCP,
+				}
+			}
+			cfg.Env.Container.Address = value
 			return nil
 		},
 		Next: NextStep(StepTLSConfig),
@@ -213,7 +228,9 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.DockerTLS = value == "yes"
+			if cfg.Env.Container != nil {
+				cfg.Env.Container.TLSVerify = value == "yes"
+			}
 			return nil
 		},
 		Next: NextStep(StepContainerName),
@@ -223,9 +240,15 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepSSHConfig: {
 		Type:        StepTypeInput,
 		TitleKey:    "ssh_host",
-		Placeholder: "user@host:22",
+		Placeholder: "ssh://host:22",
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.DockerSSHHost = value
+			if cfg.Env.Container == nil {
+				cfg.Env.Container = &types.ContainerConn{
+					Engine: types.ContainerEngineDocker,
+					Type:   types.ContainerConnTypeSSH,
+				}
+			}
+			cfg.Env.Container.Address = value
 			return nil
 		},
 		Next: NextStep(StepContainerName),

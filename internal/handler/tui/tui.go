@@ -331,7 +331,7 @@ func (t *TUI) renderContent() string {
 	b.WriteString("\n")
 
 	// 网络不可用警告（仅在操作选择步骤显示）
-	if t.step == StepAction && !t.cfg.CanInstall() {
+	if t.step == StepAction && t.cfg.Registry == "unavailable" {
 		width := min(t.width, 80)
 		if width < 40 {
 			width = 40
@@ -453,7 +453,11 @@ func (t *TUI) renderConfirm() string {
 	}
 
 	if cfg.InstallType == types.InstallTypeContainer {
-		details = append(details, [2]string{i18n.T("docker_connection"), cfg.DockerConnType})
+		connType := "local"
+		if cfg.Env.Container != nil {
+			connType = string(cfg.Env.Container.Type)
+		}
+		details = append(details, [2]string{i18n.T("docker_connection"), connType})
 		if cfg.HTTPProxy != "" {
 			details = append(details, [2]string{i18n.T("proxy_address"), cfg.HTTPProxy})
 		}
