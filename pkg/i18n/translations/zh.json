@@ -22,7 +22,7 @@
   "docker_not_found_with_os": "您当前使用的是 %s 系统，未安装 Docker Desktop，请手动安装或使用二进制方式安装。",
   "docker_not_found_linux_with_os": "您当前使用的是 %s 系统，未安装 Docker，可以选择自动安装 Docker 或使用二进制方式安装。",
   "docker_not_found_linux_hint": "未检测到 Docker/Podman。可选择：在线安装、手动安装或二进制安装。",
-  "docker_not_found_desktop_hint": "未检测到 Docker Desktop。请手动安装或使用二进制安装。\n\n下载：https://www.docker.com/products/docker-desktop/",
+  "docker_not_found_desktop_hint": "未检测到 Docker Desktop。请手动安装或使用二进制安装。|下载：https://www.docker.com/products/docker-desktop/",
   "install_docker": "安装 Docker",
   "install_docker_desc": "自动安装 Docker/Podman（仅限 Linux）",
   "install_docker_linux_desc": "使用官方脚本自动安装 Docker",

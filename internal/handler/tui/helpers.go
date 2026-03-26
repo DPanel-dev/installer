@@ -13,6 +13,7 @@ var (
 	warningColor = lipgloss.Color("#FAAD14")
 	infoColor    = lipgloss.Color("#1890FF")
 	mutedColor   = lipgloss.Color("#8C8C8C")
+	orangeColor  = lipgloss.Color("#FFA500")
 
 	bgSelectedColor = lipgloss.Color("#0050B3")
 	bgInputColor    = lipgloss.Color("#2A2A2A")
@@ -99,6 +100,17 @@ var (
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(infoColor)
+
+	errorBoxStyle = lipgloss.NewStyle().
+			Foreground(errorColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(errorColor)
+
+	// 统一消息样式（橙色）
+	messageStyle = lipgloss.NewStyle().
+			Foreground(orangeColor)
 )
 
 // ========== 渲染辅助函数 ==========

@@ -41,6 +41,13 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepAction: {
 		Type:     StepTypeMenu,
 		TitleKey: "select_action",
+		Message: func(cfg *config.Config) *MessageContent {
+			// 网络不可用警告
+			if cfg.Registry == "unavailable" {
+				return &MessageContent{Type: MessageTypeWarning, Content: i18n.T("no_registry_available")}
+			}
+			return nil
+		},
 		Options: func(cfg *config.Config) []OptionItem {
 			canInstall := cfg.Registry != "unavailable"
 			return []OptionItem{
@@ -100,6 +107,18 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepInstallType: {
 		Type:     StepTypeMenu,
 		TitleKey: "install_method",
+		Message: func(cfg *config.Config) *MessageContent {
+			// 有本地容器连接时不需要提示
+			if cfg.Env.ContainerConn != nil && ((cfg.Env.ContainerConn.IsDocker() && cfg.Env.ContainerConn.IsLocal()) || cfg.Env.ContainerConn.IsPodman()) {
+				return nil
+			}
+
+			// 没有本地容器连接
+			if cfg.Env.OS == "linux" {
+				return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("docker_not_found_linux_hint")}
+			}
+			return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("docker_not_found_desktop_hint")}
+		},
 		Options: func(cfg *config.Config) []OptionItem {
 			// 有本地容器连接（Docker/Podman 可用）
 			if cfg.Env.ContainerConn != nil && ((cfg.Env.ContainerConn.IsDocker() && cfg.Env.ContainerConn.IsLocal()) || cfg.Env.ContainerConn.IsPodman()) {

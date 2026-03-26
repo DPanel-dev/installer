@@ -105,6 +105,22 @@ func (s Step) String() string {
 
 // ========== 数据结构 ==========
 
+// MessageType 消息类型
+type MessageType int
+
+const (
+	MessageTypeInfo MessageType = iota
+	MessageTypeWarning
+	MessageTypeError
+	MessageTypeLoading
+)
+
+// MessageContent 消息内容
+type MessageContent struct {
+	Type    MessageType
+	Content string
+}
+
 // OptionItem 选项定义
 type OptionItem struct {
 	Value       string // 选项值
@@ -117,6 +133,9 @@ type OptionItem struct {
 type StepDefinition struct {
 	Type     StepType
 	TitleKey string
+
+	// 提示信息（可选，返回 nil 则不显示）
+	Message func(cfg *config.Config) *MessageContent
 
 	// 输入类型
 	DefaultValue func(cfg *config.Config) string

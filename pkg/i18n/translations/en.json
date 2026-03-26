@@ -22,7 +22,7 @@
   "docker_not_found_with_os": "You are currently using %s system. Docker Desktop is not installed. Please install Docker manually or use binary installation.",
   "docker_not_found_linux_with_os": "You are currently using %s system. Docker is not installed. You can install it automatically or use binary installation.",
   "docker_not_found_linux_hint": "Docker/Podman not detected. Options: Online install, Manual install, or Binary install.",
-  "docker_not_found_desktop_hint": "Docker Desktop not detected. Please install manually or use binary installation.\n\nDownload: https://www.docker.com/products/docker-desktop/",
+  "docker_not_found_desktop_hint": "Docker Desktop not detected. Please install manually or use binary installation.|Download: https://www.docker.com/products/docker-desktop/",
   "install_docker": "Install Docker",
   "install_docker_desc": "Install Docker/Podman automatically (Linux only)",
   "install_docker_linux_desc": "Install Docker automatically using the official script",

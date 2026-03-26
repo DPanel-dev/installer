@@ -386,34 +386,20 @@ func (t *TUI) renderContent() string {
 	var b strings.Builder
 	b.WriteString("\n")
 
-	// 网络不可用警告（仅在操作选择步骤显示）
-	if t.step == StepAction && t.cfg.Registry == "unavailable" {
-		width := min(t.width, 80)
-		if width < 40 {
-			width = 40
+	// 渲染步骤提示信息（橙色 + > 内容格式）
+	if t.currentDef.Message != nil {
+		if msg := t.currentDef.Message(t.cfg); msg != nil && msg.Content != "" {
+			// 按 | 分隔多行，每行都以 > 开头
+			lines := strings.Split(msg.Content, "|")
+			for _, line := range lines {
+				line = strings.TrimSpace(line)
+				if line != "" {
+					b.WriteString(messageStyle.Render("> " + line))
+					b.WriteString("\n")
+				}
+			}
+			b.WriteString("\n")
 		}
-		warningText := i18n.T("no_registry_available")
-		b.WriteString(warningBoxStyle.Width(width).Render("⚠️ " + warningText))
-		b.WriteString("\n\n")
-	}
-
-	// 安装方式步骤的 Docker 提示
-	if t.step == StepInstallType && t.cfg.Env.ContainerConn == nil {
-		width := min(t.width, 80)
-		if width < 40 {
-			width = 40
-		}
-
-		if t.cfg.Env.OS == "linux" {
-			// Linux：提示可以在线安装或手动安装
-			hintText := i18n.T("docker_not_found_linux_hint")
-			b.WriteString(hintBoxStyle.Width(width).Render("ℹ️  " + hintText))
-		} else {
-			// Windows/macOS：提示安装 Desktop 或使用二进制
-			hintText := i18n.T("docker_not_found_desktop_hint")
-			b.WriteString(hintBoxStyle.Width(width).Render("ℹ️  " + hintText))
-		}
-		b.WriteString("\n\n")
 	}
 
 	switch t.currentDef.Type {
