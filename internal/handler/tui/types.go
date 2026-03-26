@@ -25,13 +25,15 @@ const (
 
 const (
 	StepLanguage Step = iota
-	StepMirrorCheck
 	StepAction
+	StepMirrorCheck
+	StepRegistry
 	StepInstallType
+	StepInstallDocker      // 确认是否在线安装 Docker
+	StepInstallingDocker   // 执行 Docker 在线安装
 	StepVersion
 	StepEdition
 	StepBaseImage
-	StepRegistry
 	StepDockerConnection
 	StepDockerConfig
 	StepTLSConfig
@@ -52,20 +54,24 @@ func (s Step) String() string {
 	switch s {
 	case StepLanguage:
 		return "language"
-	case StepMirrorCheck:
-		return "mirror_check"
 	case StepAction:
 		return "action"
+	case StepMirrorCheck:
+		return "mirror_check"
+	case StepRegistry:
+		return "registry"
 	case StepInstallType:
 		return "install_type"
+	case StepInstallDocker:
+		return "install_docker"
+	case StepInstallingDocker:
+		return "installing_docker"
 	case StepVersion:
 		return "version"
 	case StepEdition:
 		return "edition"
 	case StepBaseImage:
 		return "base_image"
-	case StepRegistry:
-		return "registry"
 	case StepDockerConnection:
 		return "docker_connection"
 	case StepDockerConfig:
@@ -113,7 +119,7 @@ type StepDefinition struct {
 	TitleKey string
 
 	// 输入类型
-	DefaultValue string
+	DefaultValue func(cfg *config.Config) string
 	Placeholder  string
 
 	// 菜单类型（统一为函数形式）

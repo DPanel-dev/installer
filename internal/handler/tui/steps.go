@@ -1,9 +1,14 @@
 package tui
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 
 	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/script"
 	"github.com/dpanel-dev/installer/internal/types"
 	"github.com/dpanel-dev/installer/pkg/i18n"
 )
@@ -96,22 +101,26 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeMenu,
 		TitleKey: "install_method",
 		Options: func(cfg *config.Config) []OptionItem {
-			if cfg.Env.ContainerConn != nil {
+			// 有本地容器连接（Docker/Podman 可用）
+			if cfg.Env.ContainerConn != nil && ((cfg.Env.ContainerConn.IsDocker() && cfg.Env.ContainerConn.IsLocal()) || cfg.Env.ContainerConn.IsPodman()) {
 				return []OptionItem{
 					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
 					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 				}
 			}
-			// Docker 不可用 - Linux
-			if cfg.Env.OS == "linux" {
+
+			// 没有本地容器连接
+			if runtime.GOOS == "linux" {
+				// Linux：可以在线安装 Docker（提示在 TUI 提示区域显示）
 				return []OptionItem{
-					{Value: types.InstallTypeContainer, Label: "container_install", Description: "install_docker_linux_desc"},
+					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
 					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 				}
 			}
-			// Windows/macOS Docker 不可用
+
+			// Windows/macOS：容器安装禁用（提示在 TUI 提示区域显示）
 			return []OptionItem{
-				{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_disabled", Disabled: true},
+				{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc", Disabled: true},
 				{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
 			}
 		},
@@ -119,7 +128,109 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.InstallType = value
 			return nil
 		},
-		Next: NextStep(StepVersion),
+		Next: func(cfg *config.Config) Step {
+			// 选择二进制安装 -> 跳转到版本选择
+			if cfg.InstallType == types.InstallTypeBinary {
+				return StepVersion
+			}
+
+			// 选择容器安装
+			// 有本地容器连接 -> 跳转到版本选择
+			if cfg.Env.ContainerConn != nil {
+				return StepVersion
+			}
+
+			// 没有本地容器连接 + Linux -> 跳转到确认在线安装 Docker
+			if cfg.Env.OS == "linux" {
+				return StepInstallDocker
+			}
+
+			// 其他情况（不应该到达这里，因为容器安装已禁用）
+			return StepVersion
+		},
+	},
+
+	// ========== 确认在线安装 Docker ==========
+	StepInstallDocker: {
+		Type:     StepTypeMenu,
+		TitleKey: "install_docker_prompt",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{Value: "yes", Label: "install_docker_online", Description: "install_docker_online_desc"},
+				{Value: "no", Label: "skip_docker_install", Description: "skip_docker_install_desc"},
+			}
+		},
+		Finish: func(cfg *config.Config, value string) error {
+			cfg.State["install_docker_choice"] = value
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			choice, _ := cfg.State["install_docker_choice"].(string)
+			if choice == "yes" {
+				// 选择安装 -> 执行安装
+				return StepInstallingDocker
+			}
+			// 选择跳过 -> 切换到二进制安装
+			cfg.InstallType = types.InstallTypeBinary
+			return StepVersion
+		},
+	},
+
+	// ========== 执行 Docker 在线安装 ==========
+	StepInstallingDocker: {
+		Type:     StepTypeProgress,
+		TitleKey: "installing_docker",
+		Finish: func(cfg *config.Config, _ string) error {
+			// 1. 选择对应的脚本
+			var scriptContent string
+			if _, err := os.Stat("/etc/alpine-release"); err == nil {
+				// Alpine Linux
+				scriptContent = script.DockerInstallAlpine
+			} else {
+				// 标准 Linux
+				scriptContent = script.DockerInstallLinux
+			}
+
+			// 2. 创建临时文件
+			tmpDir := os.TempDir()
+			scriptPath := filepath.Join(tmpDir, "dpanel-docker-install.sh")
+
+			if err := os.WriteFile(scriptPath, []byte(scriptContent), 0755); err != nil {
+				cfg.State["docker_install_error"] = err.Error()
+				return nil
+			}
+			defer os.Remove(scriptPath)
+
+			// 3. 执行脚本
+			cmd := exec.Command("sh", scriptPath)
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+
+			if err := cmd.Run(); err != nil {
+				cfg.State["docker_install_error"] = err.Error()
+				return nil
+			}
+
+			// 4. 验证安装
+			if _, err := exec.LookPath("docker"); err != nil {
+				cfg.State["docker_install_error"] = "docker command not found after installation"
+				return nil
+			}
+
+			cfg.State["docker_install_success"] = true
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			success, _ := cfg.State["docker_install_success"].(bool)
+			if success {
+				// 安装成功 -> 重新检测环境
+				cfg.Env = config.NewEnvCheck()
+				return StepVersion
+			}
+			// 安装失败 -> 切换到二进制安装
+			cfg.InstallType = types.InstallTypeBinary
+			return StepVersion
+		},
 	},
 
 	// ========== 版本选择 ==========
@@ -182,7 +293,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.BaseImage = value
 			return nil
 		},
-		Next: NextStep(StepRegistry),
+		Next: NextStep(StepDockerConnection),
 	},
 
 	// ========== 镜像仓库 ==========
@@ -221,7 +332,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.Registry = value
 			return nil
 		},
-		Next: NextStep(StepAction),
+		Next: NextStep(StepInstallType),
 	},
 
 	// ========== Docker 连接方式 ==========
@@ -265,7 +376,6 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:         StepTypeInput,
 		TitleKey:     "docker_host",
 		Placeholder:  "tcp://localhost:2375",
-		DefaultValue: "tcp://localhost:2375",
 		Finish: func(cfg *config.Config, value string) error {
 			if cfg.Env.ContainerConn == nil {
 				cfg.Env.ContainerConn = &config.ContainerConn{
@@ -320,7 +430,9 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepContainerName: {
 		Type:         StepTypeInput,
 		TitleKey:     "container_name",
-		DefaultValue: "dpanel",
+		DefaultValue: func(cfg *config.Config) string {
+			return cfg.ContainerName
+		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.ContainerName = value
 			return nil
@@ -332,7 +444,6 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepPort: {
 		Type:         StepTypeInput,
 		TitleKey:     "access_port",
-		DefaultValue: "80",
 		Finish: func(cfg *config.Config, value string) error {
 			if value != "" {
 				if port, err := strconv.Atoi(value); err == nil {
@@ -348,7 +459,9 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepDataPath: {
 		Type:         StepTypeInput,
 		TitleKey:     "data_path",
-		DefaultValue: "/home/dpanel",
+		DefaultValue: func(cfg *config.Config) string {
+			return cfg.DataPath
+		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.DataPath = value
 			return nil

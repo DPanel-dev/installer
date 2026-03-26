@@ -92,6 +92,13 @@ var (
 			Padding(1, 2).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(warningColor)
+
+	hintBoxStyle = lipgloss.NewStyle().
+			Foreground(infoColor).
+			Background(bgInputColor).
+			Padding(1, 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(infoColor)
 )
 
 // ========== 渲染辅助函数 ==========

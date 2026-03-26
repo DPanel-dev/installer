@@ -142,31 +142,39 @@ func (t *TUI) getOptions() []OptionItem {
 
 // initStep 初始化当前步骤
 func (t *TUI) initStep() {
-	// 缓存步骤定义
 	t.currentDef = GetStepDef(t.step)
-
-	// 设置默认值
-	t.inputValue = t.currentDef.DefaultValue
-
-	// 重置光标
 	t.cursor = 0
+	t.inputValue = ""
 
-	// 恢复历史选择（如果有）
-	stepName := t.step.String()
-	if savedValue := t.cfg.GetStepValue(stepName); savedValue != "" {
+	// 确定 finalValue：默认值 → 历史值覆盖
+	var finalValue string
+	if t.currentDef.DefaultValue != nil {
+		finalValue = t.currentDef.DefaultValue(t.cfg)
+	}
+	if saved := t.cfg.GetStepValue(t.step.String()); saved != "" {
+		finalValue = saved
+	}
+
+	// 如果 finalValue 为空则取第一个非禁用的选项
+	for i, opt := range t.getOptions() {
+		if !opt.Disabled && (t.currentDef.Type == StepTypeMenu || t.currentDef.Type == StepTypeConfirm ){
+			t.cursor = i
+			break
+		}
+	}
+
+	// 应用 finalValue
+	if finalValue != "" {
 		switch t.currentDef.Type {
+		case StepTypeInput:
+			t.inputValue = finalValue
 		case StepTypeMenu, StepTypeConfirm:
-			// 查找并恢复光标位置
-			options := t.getOptions()
-			for i, opt := range options {
-				if opt.Value == savedValue {
+			for i, opt := range t.getOptions() {
+				if opt.Value == finalValue {
 					t.cursor = i
 					break
 				}
 			}
-		case StepTypeInput:
-			// 恢复输入值
-			t.inputValue = savedValue
 		}
 	}
 }
@@ -249,8 +257,8 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 
 	case StepTypeInput:
 		value = t.inputValue
-		if value == "" {
-			value = t.currentDef.DefaultValue
+		if value == "" && t.currentDef.DefaultValue != nil {
+			value = t.currentDef.DefaultValue(t.cfg)
 		}
 	}
 
@@ -386,6 +394,25 @@ func (t *TUI) renderContent() string {
 		}
 		warningText := i18n.T("no_registry_available")
 		b.WriteString(warningBoxStyle.Width(width).Render("⚠️ " + warningText))
+		b.WriteString("\n\n")
+	}
+
+	// 安装方式步骤的 Docker 提示
+	if t.step == StepInstallType && t.cfg.Env.ContainerConn == nil {
+		width := min(t.width, 80)
+		if width < 40 {
+			width = 40
+		}
+
+		if t.cfg.Env.OS == "linux" {
+			// Linux：提示可以在线安装或手动安装
+			hintText := i18n.T("docker_not_found_linux_hint")
+			b.WriteString(hintBoxStyle.Width(width).Render("ℹ️  " + hintText))
+		} else {
+			// Windows/macOS：提示安装 Desktop 或使用二进制
+			hintText := i18n.T("docker_not_found_desktop_hint")
+			b.WriteString(hintBoxStyle.Width(width).Render("ℹ️  " + hintText))
+		}
 		b.WriteString("\n\n")
 	}
 
