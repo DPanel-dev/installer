@@ -85,7 +85,7 @@ func (c *CLI) run(cfg *config.Config) error {
 	cmdName := args[0]
 	cmd := GetCommand(cmdName)
 	if cmd == nil {
-		return fmt.Errorf("unknown command: %s", cmdName)
+		return fmt.Errorf("unknown command: %s (available: %s)", cmdName, joinCommandNames(Commands))
 	}
 
 	// 4. 解析子命令 flags
@@ -135,7 +135,7 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 			name, value := parseLongFlag(arg)
 			def, exists := flagDefs[name]
 			if !exists {
-				return nil, fmt.Errorf("unknown flag: --%s", name)
+				return nil, fmt.Errorf("unknown flag: --%s (use \"dpanel-installer %s --help\" to view available flags)", name, cmd.Name)
 			}
 			if value == "" && i+1 < len(args) && !isFlagToken(args[i+1]) {
 				value = args[i+1]
@@ -146,7 +146,10 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 				value = "true"
 			}
 			values[name] = value
+			continue
 		}
+
+		return nil, fmt.Errorf("unexpected argument: %s (flags must use --name=value or --name value)", arg)
 	}
 
 	// 查找 flag 定义并应用
@@ -207,7 +210,6 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 	return opts, nil
 }
 
-// parseLongFlag 解析长格式 flag
 // showRootHelp 显示根帮助
 func (c *CLI) showRootHelp() {
 	fmt.Println()
@@ -226,6 +228,10 @@ func (c *CLI) showRootHelp() {
 	fmt.Println("  --version    Show version")
 	fmt.Println()
 	fmt.Println("Use \"dpanel-installer [command] --help\" for more information about a command.")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  dpanel-installer install --type=container --docker-sock=/var/run/docker.sock")
+	fmt.Println("  dpanel-installer install --type=binary --port=8080 --data-path=/home/dpanel/data")
 	fmt.Println()
 }
 

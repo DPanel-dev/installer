@@ -77,22 +77,14 @@ func DetectDocker() *ContainerConn {
 		return conn
 	}
 
-	if strings.HasPrefix(host, "tcp://") {
-		conn.Type = types.ContainerConnTypeTCP
-		conn.Address = host
-		return conn
+	if strings.HasPrefix(host, "tcp://") || strings.HasPrefix(host, "ssh://") {
+		slog.Debug("remote docker context is not supported in installer", "host", host)
+		return nil
 	}
 
-	if strings.HasPrefix(host, "ssh://") {
-		conn.Type = types.ContainerConnTypeSSH
-		conn.Address = host
-		return conn
-	}
-
-	// 未知格式，尝试作为 TCP
-	conn.Type = types.ContainerConnTypeTCP
-	conn.Address = host
-	return conn
+	// 未知格式按不支持处理
+	slog.Debug("unsupported docker host format in installer", "host", host)
+	return nil
 }
 
 // DetectPodman 检测 Podman 并返回连接配置

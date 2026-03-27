@@ -35,16 +35,7 @@ func (c *ContainerConn) IsLocal() bool {
 	if c == nil {
 		return false
 	}
-	if c.Type == types.ContainerConnTypeSock {
-		return true
-	}
-	if c.Type == types.ContainerConnTypeTCP {
-		// TCP 127.x 或 localhost = 本地
-		return len(c.Address) >= 14 &&
-			(c.Address[:14] == "tcp://127." ||
-				(len(c.Address) >= 16 && c.Address[:16] == "tcp://localhost"))
-	}
-	return false
+	return c.Type == types.ContainerConnTypeSock
 }
 
 // IsRemote 判断是否为远程容器引擎

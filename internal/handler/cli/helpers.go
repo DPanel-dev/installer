@@ -40,3 +40,11 @@ func normalizeBoolFlag(raw string) (string, error) {
 	return "false", nil
 }
 
+// joinCommandNames returns a comma-separated command list.
+func joinCommandNames(commands []CommandDefinition) string {
+	names := make([]string, 0, len(commands))
+	for _, cmd := range commands {
+		names = append(names, cmd.Name)
+	}
+	return strings.Join(names, ", ")
+}

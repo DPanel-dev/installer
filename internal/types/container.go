@@ -22,13 +22,4 @@ const (
 // === 容器连接类型 ===
 const (
 	ContainerConnTypeSock = "sock" // Unix socket / Windows named pipe
-	ContainerConnTypeTCP  = "tcp"  // TCP 连接
-	ContainerConnTypeSSH  = "ssh"  // SSH 连接
-)
-
-// === Docker 连接类型（兼容旧代码） ===
-const (
-	DockerConnLocal = "local"
-	DockerConnTCP   = "tcp"
-	DockerConnSSH   = "ssh"
 )

@@ -40,6 +40,12 @@ runtime/
 install_logs/
 run.log
 
+# OS metadata
+.DS_Store
+
+# Local cache
+.cache/
+
 # Project analysis (optional)
 # PROJECT_ANALYSIS_REPORT.md
 

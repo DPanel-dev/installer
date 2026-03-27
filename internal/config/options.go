@@ -116,64 +116,6 @@ func WithContainerSock(address string) Option {
 	}
 }
 
-// WithContainerTCP 设置 TCP 连接
-func WithContainerTCP(host string, port int, tlsVerify bool) Option {
-	return func(c *Config) error {
-		if host == "" {
-			return fmt.Errorf("TCP host cannot be empty")
-		}
-		if c.Env.ContainerConn == nil {
-			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
-		}
-		c.Env.ContainerConn.Type = types.ContainerConnTypeTCP
-		c.Env.ContainerConn.Address = fmt.Sprintf("tcp://%s:%d", host, port)
-		c.Env.ContainerConn.TLSVerify = tlsVerify
-		return nil
-	}
-}
-
-// WithContainerSSH 设置 SSH 连接
-func WithContainerSSH(host string, port int, username string) Option {
-	return func(c *Config) error {
-		if host == "" {
-			return fmt.Errorf("SSH host cannot be empty")
-		}
-		if c.Env.ContainerConn == nil {
-			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
-		}
-		c.Env.ContainerConn.Type = types.ContainerConnTypeSSH
-		c.Env.ContainerConn.Address = fmt.Sprintf("ssh://%s:%d", host, port)
-		c.Env.ContainerConn.SSHUsername = username
-		return nil
-	}
-}
-
-// WithContainerTLS 设置 TLS 配置
-func WithContainerTLS(caCert, cert, key string) Option {
-	return func(c *Config) error {
-		if c.Env.ContainerConn == nil {
-			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
-		}
-		c.Env.ContainerConn.TLSVerify = true
-		c.Env.ContainerConn.TLSCACert = caCert
-		c.Env.ContainerConn.TLSCert = cert
-		c.Env.ContainerConn.TLSKey = key
-		return nil
-	}
-}
-
-// WithContainerSSHAuth 设置 SSH 认证
-func WithContainerSSHAuth(password, keyPath string) Option {
-	return func(c *Config) error {
-		if c.Env.ContainerConn == nil {
-			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
-		}
-		c.Env.ContainerConn.SSHPassword = password
-		c.Env.ContainerConn.SSHKeyPath = keyPath
-		return nil
-	}
-}
-
 // === 网络配置 Options ===
 
 // WithDNS 设置 DNS
