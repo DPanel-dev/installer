@@ -116,6 +116,7 @@
   "start_installation": "Start Installation",
   "back_to_modify": "Back to Modify",
   "installing": "Installing...",
+  "installation_success": "Installation Succeeded",
   "please_wait": "Please wait...",
   "installation_complete": "Installation Completed Successfully!",
   "installation_failed": "Installation Failed",

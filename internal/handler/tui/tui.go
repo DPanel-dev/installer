@@ -635,8 +635,15 @@ func (t *TUI) renderTitle() string {
 	if t.step == StepLanguage {
 		title = "🚀 DPanel - " + "选择语言" + " / Select Language" + fmt.Sprintf(" (%d/%d)", t.step, StepComplete)
 	} else {
-		stepName := i18n.T(t.currentDef.TitleKey)
-		title = fmt.Sprintf("🚀 DPanel - %s (%d/%d)", stepName, t.step, StepComplete)
+		displayStep := t.step
+		titleKey := t.currentDef.TitleKey
+		// 最后一步统一显示：安装完成（成功/失败都显示 19/19）
+		if t.step == StepComplete || t.step == StepError {
+			displayStep = StepComplete
+			titleKey = "installation_complete"
+		}
+		stepName := i18n.T(titleKey)
+		title = fmt.Sprintf("🚀 DPanel - %s (%d/%d)", stepName, displayStep, StepComplete)
 	}
 
 	width := min(t.width, 80)
@@ -699,13 +706,19 @@ func (t *TUI) renderContent() string {
 		b.WriteString("\n")
 
 	case StepTypeComplete:
+		b.WriteString(successStyle.Render("✓ " + i18n.T("installation_success")))
+		b.WriteString("\n")
+		b.WriteString(infoStyle.Render(i18n.T("press_any_key_to_exit")))
 		b.WriteString("\n")
 
 	case StepTypeError:
 		b.WriteString(errorStyle.Render("✗ " + i18n.T("installation_failed")))
-		b.WriteString("\n\n")
+		b.WriteString("\n")
 		if t.err != nil {
 			b.WriteString(t.err.Error())
+			b.WriteString("\n")
+		} else {
+			b.WriteString(i18n.T("installation_failed"))
 			b.WriteString("\n")
 		}
 	}

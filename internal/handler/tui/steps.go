@@ -551,9 +551,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeProgress,
 		TitleKey: "installing",
 		Finish: func(cfg *config.Config, value string) error {
-			// 当前为模拟执行，等待 5 秒
-			time.Sleep(5 * time.Second)
-			return nil
+			// 临时用于预览失败界面：模拟安装失败
+			time.Sleep(3 * time.Second)
+			return fmt.Errorf("模拟安装失败：无法连接容器引擎，请检查 /var/run/docker.sock 权限")
 		},
 		Next: NextStep(StepComplete),
 	},
@@ -564,9 +564,6 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "installation_complete",
 		Finish: func(cfg *config.Config, value string) error {
 			return nil
-		},
-		Message: func(cfg *config.Config) *MessageContent {
-			return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("press_any_key_to_exit")}
 		},
 		Next: func(cfg *config.Config) Step {
 			return StepNone

@@ -115,6 +115,7 @@
   "start_installation": "开始安装",
   "back_to_modify": "返回修改",
   "installing": "正在安装...",
+  "installation_success": "安装成功",
   "please_wait": "请稍候...",
   "installation_complete": "安装完成！",
   "installation_failed": "安装失败",
