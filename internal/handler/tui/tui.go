@@ -660,7 +660,7 @@ func (t *TUI) renderContent() string {
 	// PreRun 阶段统一显示请稍候读秒
 	if t.isPreRunActive() {
 		elapsed, _ := t.state["progress_elapsed_seconds"].(int)
-		msg := fmt.Sprintf("%s (已运行 %ds)", i18n.T("please_wait"), elapsed)
+		msg := fmt.Sprintf("%s %s", i18n.T("please_wait"), fmt.Sprintf(i18n.T("elapsed_seconds"), elapsed))
 		b.WriteString(infoStyle.Render("⏳ " + msg))
 		b.WriteString("\n")
 		return b.String()
@@ -701,19 +701,19 @@ func (t *TUI) renderContent() string {
 	case StepTypeProgress:
 		msg := i18n.T("please_wait")
 		elapsed, _ := t.state["progress_elapsed_seconds"].(int)
-		msg = fmt.Sprintf("%s (已运行 %ds)", msg, elapsed)
+		msg = fmt.Sprintf("%s %s", msg, fmt.Sprintf(i18n.T("elapsed_seconds"), elapsed))
 		b.WriteString(infoStyle.Render("⏳ " + msg))
 		b.WriteString("\n")
 
 	case StepTypeComplete:
 		b.WriteString(successStyle.Render("✓ " + i18n.T("installation_success")))
-		b.WriteString("\n")
-		b.WriteString(infoStyle.Render(i18n.T("press_any_key_to_exit")))
+		b.WriteString("\n\n")
+		b.WriteString(i18n.T("press_any_key_to_exit"))
 		b.WriteString("\n")
 
 	case StepTypeError:
 		b.WriteString(errorStyle.Render("✗ " + i18n.T("installation_failed")))
-		b.WriteString("\n")
+		b.WriteString("\n\n")
 		if t.err != nil {
 			b.WriteString(t.err.Error())
 			b.WriteString("\n")
@@ -855,7 +855,7 @@ func (t *TUI) renderBrowse() string {
 
 	// 目录列表
 	if len(bs.Entries) == 0 {
-		b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render("  (空目录或无法读取)"))
+		b.WriteString(lipgloss.NewStyle().Foreground(mutedColor).Render("  " + i18n.T("browse_empty_dir")))
 	} else {
 		maxShow := t.getMaxShow()
 
@@ -956,18 +956,18 @@ func (t *TUI) renderHelp() string {
 	}
 
 	if t.currentDef.Type == StepTypeInput {
-		return helpStyle.Render("Enter Confirm | Esc Back | Ctrl+C Quit") + "\n"
+		return helpStyle.Render(i18n.T("help_input")) + "\n"
 	}
 
 	if t.currentDef.Type == StepTypePathInput {
-		return helpStyle.Render("Tab Browse | Enter Confirm | Esc Back | Ctrl+C Quit") + "\n"
+		return helpStyle.Render(i18n.T("help_path_input")) + "\n"
 	}
 
 	if t.currentDef.Type == StepTypeBrowse {
-		return helpStyle.Render("↑/↓ Navigate | Space Enter | Enter Confirm | Esc Cancel | Ctrl+C Quit") + "\n"
+		return helpStyle.Render(i18n.T("help_browse")) + "\n"
 	}
 
-	return helpStyle.Render("↑/↓ Navigate | Enter Confirm | Esc Back | Ctrl+C Quit") + "\n"
+	return helpStyle.Render(i18n.T("help_default")) + "\n"
 }
 
 // ========== 辅助函数 ==========

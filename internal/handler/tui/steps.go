@@ -553,7 +553,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Finish: func(cfg *config.Config, value string) error {
 			// 临时用于预览失败界面：模拟安装失败
 			time.Sleep(3 * time.Second)
-			return fmt.Errorf("模拟安装失败：无法连接容器引擎，请检查 /var/run/docker.sock 权限")
+			return nil
 		},
 		Next: NextStep(StepComplete),
 	},
