@@ -126,6 +126,7 @@
   "confirm": "Confirm",
   "quit": "Quit",
   "press_enter": "Press Enter to continue",
+  "press_any_key_to_exit": "Press any key to quit",
   "enter_value": "Enter value",
   "title": "DPanel Installer",
   "step": "Step",

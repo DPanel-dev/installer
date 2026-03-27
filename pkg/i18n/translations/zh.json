@@ -125,6 +125,7 @@
   "confirm": "确认",
   "quit": "退出",
   "press_enter": "按回车键继续",
+  "press_any_key_to_exit": "按任意键退出",
   "enter_value": "输入值",
   "title": "DPanel 安装器",
   "step": "步骤",

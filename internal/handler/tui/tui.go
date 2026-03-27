@@ -654,7 +654,6 @@ func (t *TUI) renderContent() string {
 		b.WriteString("\n")
 
 	case StepTypeComplete:
-		b.WriteString(successStyle.Render("✓ " + i18n.T("installation_complete")))
 		b.WriteString("\n")
 
 	case StepTypeError:
@@ -894,14 +893,6 @@ func (t *TUI) renderConfirm() string {
 }
 
 func (t *TUI) renderHelp() string {
-	if t.step == StepComplete {
-		return helpStyle.Render("按任意键退出") + "\n"
-	}
-
-	if t.step == StepError {
-		return helpStyle.Render("Ctrl+C 退出") + "\n"
-	}
-
 	if t.step == StepLanguage {
 		return helpStyle.Render("↑/↓ Navigate | Enter Confirm | Esc Back | Ctrl+C Quit") + "\n"
 	}
