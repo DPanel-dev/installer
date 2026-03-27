@@ -82,6 +82,11 @@ func (t *TUI) Run(cfg *config.Config) error {
 		return err
 	}
 
+	// 用户主动退出（包括 Ctrl+C / 完成页任意键退出）时，不继续执行引擎
+	if t.quitting {
+		return nil
+	}
+
 	// 检查是否成功完成
 	if t.step != StepComplete {
 		return nil // 用户中途退出
@@ -108,6 +113,8 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.width = msg.Width
 		t.height = msg.Height
 		return t, nil
+	case installMsg:
+		return t.doInstallTick()
 	case mirrorCheckMsg:
 		// 执行镜像源检测
 		return t.doMirrorCheck()
@@ -265,6 +272,12 @@ func (t *TUI) exitBrowseMode(confirm bool) {
 // handleKey 处理按键
 func (t *TUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+
+	// 完成页支持任意键退出
+	if t.step == StepComplete {
+		t.quitting = true
+		return t, tea.Quit
+	}
 
 	// 浏览模式单独处理
 	if t.currentDef.Type == StepTypeBrowse {
@@ -474,23 +487,12 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 	t.step = nextStep
 	t.initStep()
 
-	// 开始安装（同步执行）
+	// 开始安装进度刷新
 	if t.step == StepInstalling {
-		// 执行 Finish
-		if t.currentDef.Finish != nil {
-			if err := t.currentDef.Finish(t.cfg, ""); err != nil {
-				t.err = err
-				t.step = StepError
-				t.initStep()
-				return t, nil
-			}
-		}
-		// 安装成功，跳转到完成页面
-		if t.currentDef.Next != nil {
-			t.step = t.currentDef.Next(t.cfg)
-		}
-		t.initStep()
-		return t, nil
+		t.state["install_elapsed_seconds"] = 0
+		return t, tea.Tick(time.Second, func(time.Time) tea.Msg {
+			return installMsg{}
+		})
 	}
 
 	// 开始镜像源检测
@@ -522,6 +524,43 @@ func (t *TUI) doMirrorCheck() (tea.Model, tea.Cmd) {
 		t.step++
 	}
 
+	t.initStep()
+	return t, nil
+}
+
+// doInstallTick 执行安装进度刷新（仅用于模拟安装展示）
+func (t *TUI) doInstallTick() (tea.Model, tea.Cmd) {
+	if t.step != StepInstalling {
+		return t, nil
+	}
+
+	elapsed, _ := t.state["install_elapsed_seconds"].(int)
+	elapsed++
+	t.state["install_elapsed_seconds"] = elapsed
+
+	// 模拟 5 秒执行完成（不在界面展示总时长）
+	if elapsed < 5 {
+		return t, tea.Tick(time.Second, func(time.Time) tea.Msg {
+			return installMsg{}
+		})
+	}
+
+	// 完成当前步骤 Finish
+	if t.currentDef.Finish != nil {
+		if err := t.currentDef.Finish(t.cfg, ""); err != nil {
+			t.err = err
+			t.step = StepError
+			t.initStep()
+			return t, nil
+		}
+	}
+
+	// 进入下一步
+	if t.currentDef.Next != nil {
+		t.step = t.currentDef.Next(t.cfg)
+	} else {
+		t.step++
+	}
 	t.initStep()
 	return t, nil
 }
@@ -606,7 +645,12 @@ func (t *TUI) renderContent() string {
 		b.WriteString(t.renderConfirm())
 
 	case StepTypeProgress:
-		b.WriteString(infoStyle.Render("⏳ " + i18n.T("please_wait")))
+		msg := i18n.T("please_wait")
+		if t.step == StepInstalling {
+			elapsed, _ := t.state["install_elapsed_seconds"].(int)
+			msg = fmt.Sprintf("%s (已运行 %ds)", msg, elapsed)
+		}
+		b.WriteString(infoStyle.Render("⏳ " + msg))
 		b.WriteString("\n")
 
 	case StepTypeComplete:
@@ -850,8 +894,12 @@ func (t *TUI) renderConfirm() string {
 }
 
 func (t *TUI) renderHelp() string {
-	if t.step == StepComplete || t.step == StepError {
-		return helpStyle.Render("Ctrl+C Quit") + "\n"
+	if t.step == StepComplete {
+		return helpStyle.Render("按任意键退出") + "\n"
+	}
+
+	if t.step == StepError {
+		return helpStyle.Render("Ctrl+C 退出") + "\n"
 	}
 
 	if t.step == StepLanguage {
