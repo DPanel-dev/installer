@@ -95,7 +95,7 @@ func NewConfig(opts ...Option) (*Config, error) {
 
 	// ===== 容器配置 =====
 	c.ContainerName = "dpanel"
-	c.Port = 0
+	c.Port = FindAvailablePort(8080)
 
 	// 数据路径根据系统选择
 	homeDir, _ := os.UserHomeDir()

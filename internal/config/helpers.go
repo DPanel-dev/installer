@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -208,4 +209,16 @@ func IsMusl() bool {
 	}
 
 	return false
+}
+
+// FindAvailablePort 查找可用端口，从 startPort 开始查找
+func FindAvailablePort(startPort int) int {
+	for port := startPort; port < 65535; port++ {
+		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		if err == nil {
+			ln.Close()
+			return port
+		}
+	}
+	return startPort // 如果都不可用，返回默认端口
 }

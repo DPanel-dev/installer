@@ -3,9 +3,12 @@ package tui
 import (
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/script"
@@ -292,7 +295,8 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Next: func(cfg *config.Config) Step {
 			if cfg.InstallType == types.InstallTypeBinary {
-				return StepContainerName
+				// 二进制安装：跳过容器相关配置，但需要端口配置
+				return StepPort
 			}
 			return StepBaseImage
 		},
@@ -312,7 +316,72 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.BaseImage = value
 			return nil
 		},
-		Next: NextStep(StepDockerConnection),
+		Next: NextStep(StepDockerSock),
+	},
+
+	// ========== Docker Sock 文件路径 ==========
+	StepDockerSock: {
+		Type:     StepTypeInput,
+		TitleKey: "sock_path",
+		Message: func(cfg *config.Config) *MessageContent {
+			// 构建多行提示信息
+			var tips string
+
+			// 显示当前检测到的 sock 路径
+			currentSock := "/var/run/docker.sock"
+			if cfg.Env.ContainerConn != nil && cfg.Env.ContainerConn.Address != "" {
+				// 去掉 unix:// 前缀
+				addr := cfg.Env.ContainerConn.Address
+				if strings.HasPrefix(addr, "unix://") {
+					currentSock = addr[7:]
+				} else {
+					currentSock = addr
+				}
+			}
+			var uid string
+			if v, err := user.Current(); err == nil {
+				uid = v.Uid
+			}
+			tips += i18n.T("sock_tips_1") + currentSock + "|"
+			tips += i18n.T("sock_tips_2") + "|"
+			tips += "sudo ln -s -f " + currentSock + " /var/run/docker.sock|"
+			tips += i18n.T("sock_tips_4") + "|"
+			tips += i18n.T("sock_tips_5") + "|"
+			tips += i18n.Tf("sock_tips_6", uid)
+
+			return &MessageContent{Type: MessageTypeInfo, Content: tips}
+		},
+		Options: func(cfg *config.Config) []OptionItem {
+			// 默认值：检测环境中的 sock 路径
+			defaultSock := "/var/run/docker.sock"
+			if cfg.Env.ContainerConn != nil && cfg.Env.ContainerConn.Address != "" {
+				// 去掉 unix:// 前缀
+				addr := cfg.Env.ContainerConn.Address
+				if strings.HasPrefix(addr, "unix://") {
+					defaultSock = addr[7:]
+				} else {
+					defaultSock = addr
+				}
+			}
+			return []OptionItem{
+				{
+					Value:       defaultSock,
+					Label:       "/var/run/docker.sock",
+					Description: "sock_path_desc",
+				},
+			}
+		},
+		Finish: func(cfg *config.Config, value string) error {
+			if cfg.Env.ContainerConn == nil {
+				cfg.Env.ContainerConn = &config.ContainerConn{
+					Engine: types.ContainerEngineDocker,
+					Type:   string(types.ContainerConnTypeSock),
+				}
+			}
+			cfg.Env.ContainerConn.Address = value
+			return nil
+		},
+		Next: NextStep(StepContainerName),
 	},
 
 	// ========== 镜像仓库 ==========
@@ -354,103 +423,18 @@ var StepDefinitions = map[Step]StepDefinition{
 		Next: NextStep(StepInstallType),
 	},
 
-	// ========== Docker 连接方式 ==========
-	StepDockerConnection: {
-		Type:     StepTypeMenu,
-		TitleKey: "docker_connection",
-		Options: func(cfg *config.Config) []OptionItem {
-			return []OptionItem{
-				{Value: string(types.ContainerConnTypeSock), Label: "local_sock", Description: "local_sock_desc"},
-				{Value: string(types.ContainerConnTypeTCP), Label: "remote_tcp", Description: "remote_tcp_desc"},
-				{Value: string(types.ContainerConnTypeSSH), Label: "remote_ssh", Description: "remote_ssh_desc"},
-			}
-		},
-		Finish: func(cfg *config.Config, value string) error {
-			// 初始化容器连接配置
-			if cfg.Env.ContainerConn == nil {
-				cfg.Env.ContainerConn = &config.ContainerConn{
-					Engine: types.ContainerEngineDocker,
-				}
-			}
-			cfg.Env.ContainerConn.Type = value
-			return nil
-		},
-		Next: func(cfg *config.Config) Step {
-			if cfg.Env.ContainerConn == nil {
-				return StepContainerName
-			}
-			switch cfg.Env.ContainerConn.Type {
-			case types.ContainerConnTypeTCP:
-				return StepDockerConfig
-			case types.ContainerConnTypeSSH:
-				return StepSSHConfig
-			default:
-				return StepContainerName
-			}
-		},
-	},
-
-	// ========== Docker 配置（TCP） ==========
-	StepDockerConfig: {
-		Type:         StepTypeInput,
-		TitleKey:     "docker_host",
-		Placeholder:  "tcp://localhost:2375",
-		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.ContainerConn == nil {
-				cfg.Env.ContainerConn = &config.ContainerConn{
-					Engine: types.ContainerEngineDocker,
-					Type:   types.ContainerConnTypeTCP,
-				}
-			}
-			cfg.Env.ContainerConn.Address = value
-			return nil
-		},
-		Next: NextStep(StepTLSConfig),
-	},
-
-	// ========== TLS 配置 ==========
-	StepTLSConfig: {
-		Type:     StepTypeMenu,
-		TitleKey: "tls_config",
-		Options: func(cfg *config.Config) []OptionItem {
-			return []OptionItem{
-				{Value: "yes", Label: "yes", Description: "enable_tls_desc"},
-				{Value: "no", Label: "no", Description: "disable_tls_desc"},
-			}
-		},
-		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.ContainerConn != nil {
-				cfg.Env.ContainerConn.TLSVerify = value == "yes"
-			}
-			return nil
-		},
-		Next: NextStep(StepContainerName),
-	},
-
-	// ========== SSH 配置 ==========
-	StepSSHConfig: {
-		Type:        StepTypeInput,
-		TitleKey:    "ssh_host",
-		Placeholder: "ssh://host:22",
-		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.ContainerConn == nil {
-				cfg.Env.ContainerConn = &config.ContainerConn{
-					Engine: types.ContainerEngineDocker,
-					Type:   types.ContainerConnTypeSSH,
-				}
-			}
-			cfg.Env.ContainerConn.Address = value
-			return nil
-		},
-		Next: NextStep(StepContainerName),
-	},
-
 	// ========== 容器名称 ==========
 	StepContainerName: {
-		Type:         StepTypeInput,
-		TitleKey:     "container_name",
-		DefaultValue: func(cfg *config.Config) string {
-			return cfg.ContainerName
+		Type:     StepTypeInput,
+		TitleKey: "container_name",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{
+					Value:       cfg.ContainerName,
+					Label:       "dpanel",
+					Description: "container_name_hint",
+				},
+			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.ContainerName = value
@@ -461,8 +445,17 @@ var StepDefinitions = map[Step]StepDefinition{
 
 	// ========== 端口 ==========
 	StepPort: {
-		Type:         StepTypeInput,
-		TitleKey:     "access_port",
+		Type:     StepTypeInput,
+		TitleKey: "access_port",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{
+					Value:       strconv.Itoa(cfg.Port),
+					Label:       "",
+					Description: "access_port_hint",
+				},
+			}
+		},
 		Finish: func(cfg *config.Config, value string) error {
 			if value != "" {
 				if port, err := strconv.Atoi(value); err == nil {
@@ -476,23 +469,43 @@ var StepDefinitions = map[Step]StepDefinition{
 
 	// ========== 数据路径 ==========
 	StepDataPath: {
-		Type:         StepTypeInput,
-		TitleKey:     "data_path",
-		DefaultValue: func(cfg *config.Config) string {
-			return cfg.DataPath
+		Type:     StepTypePathInput,
+		TitleKey: "data_path",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{
+					Value:       cfg.DataPath,
+					Label:       "/home/dpanel/data",
+					Description: "data_path_hint",
+				},
+			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.DataPath = value
 			return nil
 		},
-		Next: NextStep(StepProxy),
+		Next: func(cfg *config.Config) Step {
+			if cfg.InstallType == types.InstallTypeBinary {
+				// 二进制安装：跳过代理和DNS配置，直接到确认
+				return StepConfirm
+			}
+			return StepProxy
+		},
 	},
 
 	// ========== 代理 ==========
 	StepProxy: {
-		Type:        StepTypeInput,
-		TitleKey:    "proxy_address",
-		Placeholder: "http://proxy.example.com:8080",
+		Type:     StepTypeInput,
+		TitleKey: "proxy_address",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{
+					Value:       "",
+					Label:       "",
+					Description: "proxy_address_desc",
+				},
+			}
+		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.HTTPProxy = value
 			return nil
@@ -502,9 +515,17 @@ var StepDefinitions = map[Step]StepDefinition{
 
 	// ========== DNS ==========
 	StepDNS: {
-		Type:        StepTypeInput,
-		TitleKey:    "dns_address",
-		Placeholder: "8.8.8.8",
+		Type:     StepTypeInput,
+		TitleKey: "dns_address",
+		Options: func(cfg *config.Config) []OptionItem {
+			return []OptionItem{
+				{
+					Value:       "",
+					Label:       "",
+					Description: "dns_address_desc",
+				},
+			}
+		},
 		Finish: func(cfg *config.Config, value string) error {
 			cfg.DNS = value
 			return nil
@@ -527,6 +548,42 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Next: func(cfg *config.Config) Step {
 			return StepInstalling
+		},
+	},
+
+	// ========== 正在安装 ==========
+	StepInstalling: {
+		Type:     StepTypeProgress,
+		TitleKey: "installing",
+		Finish: func(cfg *config.Config, value string) error {
+			// 模拟安装，等待5秒
+			time.Sleep(5 * time.Second)
+			return nil
+		},
+		Next: NextStep(StepComplete),
+	},
+
+	// ========== 安装完成 ==========
+	StepComplete: {
+		Type:     StepTypeComplete,
+		TitleKey: "installation_complete",
+		Finish: func(cfg *config.Config, value string) error {
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			return StepNone
+		},
+	},
+
+	// ========== 安装错误 ==========
+	StepError: {
+		Type:     StepTypeError,
+		TitleKey: "installation_failed",
+		Finish: func(cfg *config.Config, value string) error {
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			return StepNone
 		},
 	},
 }

@@ -304,6 +304,7 @@ func (e *Engine) installContainer() error {
 	// Log configuration
 	e.logInstallationConfig()
 
+	// Build and save docker command (for reference)
 	cmd, err := e.buildDockerCommand()
 	if err != nil {
 		slog.Error("Failed to build docker command", "error", err)
@@ -317,20 +318,9 @@ func (e *Engine) installContainer() error {
 		slog.Warn("Failed to save installation log", "error", err)
 	}
 
-	// Log detailed installation steps
-	e.logInstallationSteps()
-
-	if err := e.executeCommand(cmd); err != nil {
-		slog.Error("Container installation failed", "error", err)
-		return fmt.Errorf("container installation failed: %w", err)
-	}
-
-	slog.Info("Container installation completed successfully")
-
-	// Save success log
-	e.saveInstallationResult(true, "")
-
-	return nil
+	// TODO: Use docker SDK for container installation
+	// Currently using docker SDK is not implemented
+	return fmt.Errorf("container installation using docker SDK is not implemented yet")
 }
 
 // logInstallationConfig logs the installation configuration
@@ -569,26 +559,6 @@ func (e *Engine) buildImageName() string {
 	return e.Config.GetImageName()
 }
 
-// executeCommand executes a shell command
-func (e *Engine) executeCommand(cmd string) error {
-	slog.Info("Executing command", "cmd", cmd)
-
-	// Execute using sh -c
-	parts := []string{"sh", "-c", cmd}
-	command := exec.Command(parts[0], parts[1:]...)
-
-	// Connect output to terminal for user feedback
-	command.Stdout = os.Stdout
-	command.Stderr = os.Stderr
-
-	if err := command.Run(); err != nil {
-		return fmt.Errorf("command execution failed: %w", err)
-	}
-
-	slog.Info("Command executed successfully")
-	return nil
-}
-
 // ParsePort parses port from string
 func ParsePort(portStr string) (int, error) {
 	if portStr == "" {
@@ -632,32 +602,11 @@ func (e *Engine) upgradeContainer() error {
 	// Log upgrade configuration
 	e.logUpgradeConfig()
 
-	runtime := e.getDockerRuntime()
-
-	// Step 1: Stop current container
-	slog.Info("Step 1: Stopping current container")
-	if err := e.stopContainer(runtime, e.Config.ContainerName); err != nil {
-		return fmt.Errorf("failed to stop container: %w", err)
-	}
-
-	// Step 2: Pull new image
-	slog.Info("Step 2: Pulling new image")
-	image := e.buildImageName()
-	if err := e.pullImage(runtime, image); err != nil {
-		return fmt.Errorf("failed to pull new image: %w", err)
-	}
-
-	// Step 3: Remove old container
-	slog.Info("Step 3: Removing old container")
-	if err := e.removeContainer(runtime, e.Config.ContainerName); err != nil {
-		return fmt.Errorf("failed to remove old container: %w", err)
-	}
-
-	// Step 4: Create and start new container
-	slog.Info("Step 4: Creating and starting new container")
+	// Build and save docker command (for reference)
 	cmd, err := e.buildDockerCommand()
 	if err != nil {
-		return fmt.Errorf("failed to build docker command: %w", err)
+		slog.Error("Failed to build docker command", "error", err)
+		return err
 	}
 
 	// Save upgrade log
@@ -665,16 +614,9 @@ func (e *Engine) upgradeContainer() error {
 		slog.Warn("Failed to save upgrade log", "error", err)
 	}
 
-	if err := e.executeCommand(cmd); err != nil {
-		slog.Error("Container upgrade failed", "error", err)
-		// Attempt rollback
-		_ = e.rollbackUpgrade(runtime, image)
-		return fmt.Errorf("container upgrade failed: %w", err)
-	}
-
-	slog.Info("Container upgrade completed successfully")
-	e.saveUpgradeResult(true, "")
-	return nil
+	// TODO: Use docker SDK for container upgrade
+	// Currently using docker SDK is not implemented
+	return fmt.Errorf("container upgrade using docker SDK is not implemented yet")
 }
 
 // upgradeBinary upgrades the binary installation
@@ -827,50 +769,9 @@ func (e *Engine) uninstallContainer() error {
 	// Log uninstall configuration
 	e.logUninstallConfig()
 
-	runtime := e.getDockerRuntime()
-
-	// Step 1: Check if container exists
-	slog.Info("Step 1: Checking if container exists")
-	containerExists, err := e.checkContainerExists(runtime, e.Config.ContainerName)
-	if err != nil {
-		return fmt.Errorf("failed to check container existence: %w", err)
-	}
-
-	if !containerExists {
-		return fmt.Errorf("container %s does not exist", e.Config.ContainerName)
-	}
-
-	// Step 2: Stop container if running
-	slog.Info("Step 2: Stopping container")
-	if err := e.stopContainer(runtime, e.Config.ContainerName); err != nil {
-		// Container might already be stopped, continue
-		slog.Warn("Failed to stop container (may already be stopped)", "error", err)
-	}
-
-	// Step 3: Remove container
-	slog.Info("Step 3: Removing container")
-	if err := e.removeContainer(runtime, e.Config.ContainerName); err != nil {
-		return fmt.Errorf("failed to remove container: %w", err)
-	}
-
-	// Step 4: Optional - Remove image
-	// TODO: Add confirmation prompt for image removal
-	// slog.Info("Step 4: Removing image")
-	// image := e.buildImageName()
-	// if err := e.removeImage(runtime, image); err != nil {
-	// 	slog.Warn("Failed to remove image", "error", err)
-	// }
-
-	// Step 5: Optional - Remove data volumes
-	// TODO: Add confirmation prompt for data removal
-	// slog.Info("Step 5: Cleaning up data volumes")
-	// if err := e.cleanupDataVolumes(); err != nil {
-	// 	slog.Warn("Failed to cleanup data volumes", "error", err)
-	// }
-
-	slog.Info("Container uninstallation completed successfully")
-	e.saveUninstallResult(true, "")
-	return nil
+	// TODO: Use docker SDK for container uninstallation
+	// Currently using docker SDK is not implemented
+	return fmt.Errorf("container uninstallation using docker SDK is not implemented yet")
 }
 
 // uninstallBinary uninstalls the binary installation
