@@ -67,43 +67,14 @@ var StepDefinitions = map[Step]StepDefinition{
 		Next: func(cfg *config.Config) Step {
 			switch cfg.Action {
 			case types.ActionInstall, types.ActionUpgrade:
-				// 安装/升级：检测镜像源
-				return StepMirrorCheck
+				// 安装/升级：进入镜像选择（进入前执行 PreRun 检测）
+				return StepRegistry
 			case types.ActionUninstall:
 				// 卸载：直接到容器名称
 				return StepContainerName
 			default:
 				return StepInstallType
 			}
-		},
-	},
-
-	// ========== 镜像源检测 ==========
-	StepMirrorCheck: {
-		Type:     StepTypeProgress,
-		TitleKey: "registry_check",
-		Finish: func(cfg *config.Config, _ string) error {
-			// 检测两个镜像源的延迟
-			dockerHubLatency := config.TestRegistryLatency(types.RegistryDockerHub)
-			aliYunLatency := config.TestRegistryLatency(types.RegistryAliYun)
-
-			// 存储检测结果
-			cfg.State["docker_hub_latency"] = dockerHubLatency
-			cfg.State["aliyun_latency"] = aliYunLatency
-
-			// 如果都不可用，记录错误但不立即返回
-			if dockerHubLatency == 0 && aliYunLatency == 0 {
-				cfg.Registry = "unavailable"
-				cfg.State["mirror_check_error"] = i18n.T("no_registry_available")
-			}
-
-			return nil
-		},
-		Next: func(cfg *config.Config) Step {
-			if cfg.Registry == "unavailable" {
-				return StepError
-			}
-			return StepRegistry
 		},
 	},
 
@@ -389,6 +360,29 @@ var StepDefinitions = map[Step]StepDefinition{
 	StepRegistry: {
 		Type:     StepTypeMenu,
 		TitleKey: "select_registry",
+		PreRun: func(cfg *config.Config) error {
+			// 进入镜像选择前先检测两个镜像源的延迟
+			dockerHubLatency := config.TestRegistryLatency(types.RegistryDockerHub)
+			aliYunLatency := config.TestRegistryLatency(types.RegistryAliYun)
+
+			cfg.State["docker_hub_latency"] = dockerHubLatency
+			cfg.State["aliyun_latency"] = aliYunLatency
+
+			if dockerHubLatency == 0 && aliYunLatency == 0 {
+				cfg.Registry = "unavailable"
+				cfg.State["mirror_check_error"] = i18n.T("no_registry_available")
+			} else {
+				cfg.Registry = ""
+			}
+			return nil
+		},
+		Message: func(cfg *config.Config) *MessageContent {
+			// 检测完成后若两者都不可用，在信息区提示
+			if cfg.Registry == "unavailable" {
+				return &MessageContent{Type: MessageTypeWarning, Content: i18n.T("no_registry_available")}
+			}
+			return nil
+		},
 		Options: func(cfg *config.Config) []OptionItem {
 			// 从 State 中读取检测结果
 			dockerHubLatency, _ := cfg.State["docker_hub_latency"].(int)
@@ -557,7 +551,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeProgress,
 		TitleKey: "installing",
 		Finish: func(cfg *config.Config, value string) error {
-			// 模拟安装，等待5秒
+			// 当前为模拟执行，等待 5 秒
 			time.Sleep(5 * time.Second)
 			return nil
 		},
@@ -570,6 +564,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "installation_complete",
 		Finish: func(cfg *config.Config, value string) error {
 			return nil
+		},
+		Message: func(cfg *config.Config) *MessageContent {
+			return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("press_any_key_to_exit")}
 		},
 		Next: func(cfg *config.Config) Step {
 			return StepNone

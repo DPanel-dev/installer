@@ -113,11 +113,12 @@ func (t *TUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.width = msg.Width
 		t.height = msg.Height
 		return t, nil
-	case installMsg:
-		return t.doInstallTick()
-	case mirrorCheckMsg:
-		// 执行镜像源检测
-		return t.doMirrorCheck()
+	case progressTickMsg:
+		return t.doProgressTick()
+	case preRunDoneMsg:
+		return t.handlePreRunDone(msg)
+	case progressDoneMsg:
+		return t.handleProgressDone(msg)
 	}
 	return t, nil
 }
@@ -205,6 +206,20 @@ func (t *TUI) initStep() {
 
 	// 清理浏览状态（切换步骤时）
 	delete(t.state, "browse")
+
+	// 进度步骤统一初始化计时状态
+	if t.currentDef.Type == StepTypeProgress {
+		t.state["progress_elapsed_seconds"] = 0
+	} else {
+		if !t.isPreRunActive() {
+			delete(t.state, "progress_elapsed_seconds")
+		}
+	}
+}
+
+func (t *TUI) isPreRunActive() bool {
+	v, _ := t.state["prerun_active"].(bool)
+	return v
 }
 
 // getBrowseState 获取浏览状态
@@ -277,6 +292,15 @@ func (t *TUI) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if t.step == StepComplete {
 		t.quitting = true
 		return t, tea.Quit
+	}
+
+	// 进入步骤前的 PreRun 执行中：仅允许 Ctrl+C 退出
+	if t.isPreRunActive() {
+		if key == "ctrl+c" {
+			t.quitting = true
+			return t, tea.Quit
+		}
+		return t, nil
 	}
 
 	// 浏览模式单独处理
@@ -484,37 +508,20 @@ func (t *TUI) handleEnter() (tea.Model, tea.Cmd) {
 		nextStep = t.step + 1
 	}
 
-	t.step = nextStep
-	t.initStep()
-
-	// 开始安装进度刷新
-	if t.step == StepInstalling {
-		t.state["install_elapsed_seconds"] = 0
-		return t, tea.Tick(time.Second, func(time.Time) tea.Msg {
-			return installMsg{}
-		})
-	}
-
-	// 开始镜像源检测
-	if t.step == StepMirrorCheck {
-		return t, tea.Tick(time.Millisecond*100, func(t time.Time) tea.Msg {
-			return mirrorCheckMsg{}
-		})
-	}
-
-	return t, nil
+	return t.enterStep(nextStep)
 }
 
-// doMirrorCheck 执行镜像源检测
-func (t *TUI) doMirrorCheck() (tea.Model, tea.Cmd) {
-	// 执行 Finish（同步检测）
-	if t.currentDef.Finish != nil {
-		if err := t.currentDef.Finish(t.cfg, ""); err != nil {
-			t.err = err
-			t.step = StepError
-			t.initStep()
-			return t, nil
-		}
+// handleProgressDone 处理异步过程步骤完成
+func (t *TUI) handleProgressDone(msg progressDoneMsg) (tea.Model, tea.Cmd) {
+	if t.currentDef.Type != StepTypeProgress {
+		return t, nil
+	}
+
+	if msg.err != nil {
+		t.err = msg.err
+		t.step = StepError
+		t.initStep()
+		return t, nil
 	}
 
 	// 获取下一步
@@ -528,45 +535,76 @@ func (t *TUI) doMirrorCheck() (tea.Model, tea.Cmd) {
 	return t, nil
 }
 
-// doInstallTick 执行安装进度刷新（仅用于模拟安装展示）
-func (t *TUI) doInstallTick() (tea.Model, tea.Cmd) {
-	if t.step != StepInstalling {
+// handlePreRunDone 处理进入步骤前的 PreRun 完成
+func (t *TUI) handlePreRunDone(msg preRunDoneMsg) (tea.Model, tea.Cmd) {
+	if !t.isPreRunActive() {
 		return t, nil
 	}
 
-	elapsed, _ := t.state["install_elapsed_seconds"].(int)
-	elapsed++
-	t.state["install_elapsed_seconds"] = elapsed
+	t.state["prerun_active"] = false
 
-	// 模拟 5 秒执行完成（不在界面展示总时长）
-	if elapsed < 5 {
-		return t, tea.Tick(time.Second, func(time.Time) tea.Msg {
-			return installMsg{}
-		})
+	if msg.err != nil {
+		t.err = msg.err
+		t.step = StepError
+		t.initStep()
+		return t, nil
 	}
 
-	// 完成当前步骤 Finish
-	if t.currentDef.Finish != nil {
-		if err := t.currentDef.Finish(t.cfg, ""); err != nil {
-			t.err = err
-			t.step = StepError
-			t.initStep()
-			return t, nil
-		}
-	}
-
-	// 进入下一步
-	if t.currentDef.Next != nil {
-		t.step = t.currentDef.Next(t.cfg)
-	} else {
-		t.step++
-	}
+	// PreRun 完成后进入步骤正常展示状态
 	t.initStep()
 	return t, nil
 }
 
+func (t *TUI) enterStep(step Step) (tea.Model, tea.Cmd) {
+	t.step = step
+	t.initStep()
+
+	// 进入步骤前的耗时准备：PreRun 异步执行 + 统一读秒
+	if t.currentDef.PreRun != nil {
+		t.state["prerun_active"] = true
+		t.state["progress_elapsed_seconds"] = 0
+		return t, tea.Batch(
+			tea.Tick(time.Second, func(time.Time) tea.Msg {
+				return progressTickMsg{}
+			}),
+			preRunDoneCmd(t.currentDef.PreRun, t.cfg),
+		)
+	}
+
+	// 进度步骤统一：异步执行 Finish + 读秒
+	if t.currentDef.Type == StepTypeProgress {
+		return t, tea.Batch(
+			tea.Tick(time.Second, func(time.Time) tea.Msg {
+				return progressTickMsg{}
+			}),
+			progressDoneCmd(progressStepRunner(t.currentDef, t.cfg)),
+		)
+	}
+
+	return t, nil
+}
+
+// doProgressTick 执行进度步骤的统一读秒刷新
+func (t *TUI) doProgressTick() (tea.Model, tea.Cmd) {
+	if t.currentDef.Type != StepTypeProgress && !t.isPreRunActive() {
+		return t, nil
+	}
+
+	elapsed, _ := t.state["progress_elapsed_seconds"].(int)
+	elapsed++
+	t.state["progress_elapsed_seconds"] = elapsed
+
+	return t, tea.Tick(time.Second, func(time.Time) tea.Msg {
+		return progressTickMsg{}
+	})
+}
+
 // goBack 返回上一步
 func (t *TUI) goBack() (tea.Model, tea.Cmd) {
+	if t.isPreRunActive() {
+		return t, nil
+	}
+
 	// 浏览模式：退出浏览模式（不确认选择）
 	if t.currentDef.Type == StepTypeBrowse {
 		t.exitBrowseMode(false)
@@ -612,6 +650,15 @@ func (t *TUI) renderContent() string {
 	var b strings.Builder
 	b.WriteString("\n")
 
+	// PreRun 阶段统一显示请稍候读秒
+	if t.isPreRunActive() {
+		elapsed, _ := t.state["progress_elapsed_seconds"].(int)
+		msg := fmt.Sprintf("%s (已运行 %ds)", i18n.T("please_wait"), elapsed)
+		b.WriteString(infoStyle.Render("⏳ " + msg))
+		b.WriteString("\n")
+		return b.String()
+	}
+
 	// 渲染步骤提示信息（橙色 + > 内容格式）
 	if t.currentDef.Message != nil {
 		if msg := t.currentDef.Message(t.cfg); msg != nil && msg.Content != "" {
@@ -646,10 +693,8 @@ func (t *TUI) renderContent() string {
 
 	case StepTypeProgress:
 		msg := i18n.T("please_wait")
-		if t.step == StepInstalling {
-			elapsed, _ := t.state["install_elapsed_seconds"].(int)
-			msg = fmt.Sprintf("%s (已运行 %ds)", msg, elapsed)
-		}
+		elapsed, _ := t.state["progress_elapsed_seconds"].(int)
+		msg = fmt.Sprintf("%s (已运行 %ds)", msg, elapsed)
 		b.WriteString(infoStyle.Render("⏳ " + msg))
 		b.WriteString("\n")
 
@@ -920,8 +965,34 @@ func isTranslated(s string) bool {
 
 // ========== 消息类型 ==========
 
-type installMsg struct{}
-type mirrorCheckMsg struct{}
+type progressTickMsg struct{}
+type progressDoneMsg struct {
+	err error
+}
+type preRunDoneMsg struct {
+	err error
+}
+
+func progressDoneCmd(fn func() error) tea.Cmd {
+	return func() tea.Msg {
+		return progressDoneMsg{err: fn()}
+	}
+}
+
+func preRunDoneCmd(fn func(*config.Config) error, cfg *config.Config) tea.Cmd {
+	return func() tea.Msg {
+		return preRunDoneMsg{err: fn(cfg)}
+	}
+}
+
+func progressStepRunner(def StepDefinition, cfg *config.Config) func() error {
+	if def.Finish != nil {
+		return func() error {
+			return def.Finish(cfg, "")
+		}
+	}
+	return func() error { return nil }
+}
 
 // ========== 接口验证 ==========
 

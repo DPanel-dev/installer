@@ -143,6 +143,10 @@ type StepDefinition struct {
 	// 选中/输入后更新 config
 	Finish func(cfg *config.Config, value string) error
 
+	// 过程型操作（可选，主要用于进度步骤），由调度层统一异步执行
+	// 若为空，调度层会回退调用 Finish(cfg, "")
+	PreRun func(cfg *config.Config) error
+
 	// 决定下一步（可选，默认 Step+1）
 	Next func(cfg *config.Config) Step
 }
