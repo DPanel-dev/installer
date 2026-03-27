@@ -58,9 +58,9 @@ func run() error {
 		return handlerErr
 	}
 
-	// 检查配置是否完成（用户中途退出时 Action 为空）
-	if cfg.Action == "" {
-		slog.Info("User cancelled or configuration incomplete")
+	// 仅在配置流程完成后执行安装引擎
+	if !cfg.Finished {
+		slog.Info("Configuration not finished, skip engine execution")
 		return nil
 	}
 

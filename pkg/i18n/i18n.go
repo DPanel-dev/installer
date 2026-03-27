@@ -96,11 +96,3 @@ func T(key string) string {
 	}
 	return defaultTranslator.T(key)
 }
-
-// Tf returns the formatted translation for the given key using the global translator
-func Tf(key string, args ...interface{}) string {
-	if defaultTranslator == nil {
-		return fmt.Sprintf(key, args...)
-	}
-	return defaultTranslator.Tf(key, args...)
-}

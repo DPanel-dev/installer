@@ -24,9 +24,7 @@ func NewEnvCheck() *EnvCheck {
 	// 检测容器运行时（优先 Docker，备选 Podman）
 	if conn := DetectDocker(); conn != nil {
 		env.ContainerConn = conn
-	}
-
-	if conn := DetectPodman(); conn != nil {
+	} else if conn := DetectPodman(); conn != nil {
 		env.ContainerConn = conn
 	}
 

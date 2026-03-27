@@ -13,6 +13,8 @@ import (
 type Config struct {
 	// === 操作类型 ===
 	Action string // install, upgrade, uninstall
+	// === 配置流程状态 ===
+	Finished bool // true 表示配置流程已完成，可执行安装引擎
 
 	// === 语言 ===
 	Language string // zh, en
@@ -67,6 +69,7 @@ func NewConfig(opts ...Option) (*Config, error) {
 	// 3. 根据环境设置最优默认值
 	// 操作类型
 	c.Action = types.ActionInstall
+	c.Finished = false
 
 	// 语言
 	c.Language = types.LanguageZh

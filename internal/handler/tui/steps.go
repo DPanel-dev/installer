@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
@@ -347,7 +348,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			tips += "sudo ln -s -f " + currentSock + " /var/run/docker.sock|"
 			tips += i18n.T("sock_tips_4") + "|"
 			tips += i18n.T("sock_tips_5") + "|"
-			tips += i18n.Tf("sock_tips_6", uid)
+			tips += fmt.Sprintf(i18n.T("sock_tips_6"), uid)
 
 			return &MessageContent{Type: MessageTypeInfo, Content: tips}
 		},
@@ -398,14 +399,14 @@ var StepDefinitions = map[Step]StepDefinition{
 			var dockerHubDisabled, aliYunDisabled bool
 
 			if dockerHubLatency > 0 {
-				dockerHubDesc = i18n.T("docker_hub_desc") + i18n.Tf("registry_latency", dockerHubLatency)
+				dockerHubDesc = i18n.T("docker_hub_desc") + fmt.Sprintf(i18n.T("registry_latency"), dockerHubLatency)
 			} else {
 				dockerHubDesc = i18n.T("docker_hub_desc") + i18n.T("registry_unavailable")
 				dockerHubDisabled = true
 			}
 
 			if aliYunLatency > 0 {
-				aliYunDesc = i18n.T("aliyun_desc") + i18n.Tf("registry_latency", aliYunLatency)
+				aliYunDesc = i18n.T("aliyun_desc") + fmt.Sprintf(i18n.T("registry_latency"), aliYunLatency)
 			} else {
 				aliYunDesc = i18n.T("aliyun_desc") + i18n.T("registry_unavailable")
 				aliYunDisabled = true

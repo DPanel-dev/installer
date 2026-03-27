@@ -107,18 +107,6 @@ var Commands = []CommandDefinition{
 					return config.WithDataPath(value), nil
 				},
 			},
-			// Docker 连接类型
-			{
-				Name:        "docker-type",
-				Type:        FlagTypeEnum,
-				Default:     types.DockerConnLocal,
-				Description: "Docker connection type: local, tcp, ssh",
-				EnumValues:  []string{types.DockerConnLocal, types.DockerConnTCP, types.DockerConnSSH},
-				Apply: func(value string) (config.Option, error) {
-					// 这个 flag 只是标记，实际连接由其他 flags 组合处理
-					return nil, nil
-				},
-			},
 			// Docker Socket
 			{
 				Name:        "docker-sock",
@@ -126,67 +114,6 @@ var Commands = []CommandDefinition{
 				Description: "Docker socket path (for local connection)",
 				Apply: func(value string) (config.Option, error) {
 					return config.WithContainerSock(value), nil
-				},
-			},
-			// Docker Host (TCP/SSH)
-			{
-				Name:        "docker-host",
-				Type:        FlagTypeString,
-				Description: "Docker host address (for TCP/SSH connection)",
-				Apply: func(value string) (config.Option, error) {
-					// 由 parser 根据 docker-type 组合处理
-					return nil, nil
-				},
-			},
-			// TLS
-			{
-				Name:        "tls",
-				Type:        FlagTypeBool,
-				Description: "Enable TLS for TCP connection",
-				Apply: func(value string) (config.Option, error) {
-					// 由 parser 根据情况组合处理
-					return nil, nil
-				},
-			},
-			// TLS 路径
-			{
-				Name:        "tls-path",
-				Type:        FlagTypeString,
-				Description: "TLS certificates path",
-				Apply: func(value string) (config.Option, error) {
-					return config.WithContainerTLS(
-						value+"/ca.pem",
-						value+"/cert.pem",
-						value+"/key.pem",
-					), nil
-				},
-			},
-			// SSH 用户名
-			{
-				Name:        "ssh-user",
-				Type:        FlagTypeString,
-				Description: "SSH username (for SSH connection)",
-				Apply: func(value string) (config.Option, error) {
-					// 由 parser 组合处理
-					return nil, nil
-				},
-			},
-			// SSH 密码
-			{
-				Name:        "ssh-password",
-				Type:        FlagTypeString,
-				Description: "SSH password",
-				Apply: func(value string) (config.Option, error) {
-					return config.WithContainerSSHAuth(value, ""), nil
-				},
-			},
-			// SSH Key
-			{
-				Name:        "ssh-key",
-				Type:        FlagTypeString,
-				Description: "SSH private key path",
-				Apply: func(value string) (config.Option, error) {
-					return config.WithContainerSSHAuth("", value), nil
 				},
 			},
 			// HTTP Proxy

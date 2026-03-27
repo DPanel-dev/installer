@@ -7,7 +7,6 @@ import (
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/handler"
-	"github.com/dpanel-dev/installer/internal/types"
 )
 
 // CLI 实现 handler.Handler 接口
@@ -109,6 +108,9 @@ func (c *CLI) run(cfg *config.Config) error {
 		}
 	}
 
+	// 命令解析与配置应用完成，允许主流程执行引擎
+	cfg.Finished = true
+
 	return nil
 }
 
@@ -116,6 +118,7 @@ func (c *CLI) run(cfg *config.Config) error {
 func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*config.Config) error, error) {
 	// 解析结果存储
 	values := make(map[string]string)
+	flagDefs := buildFlagDefMap(cmd)
 
 	// 遍历 args 解析 flags
 	for i := 0; i < len(args); i++ {
@@ -127,12 +130,20 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 		}
 
 		// 解析 flag
-		if strings.HasPrefix(arg, "--") {
+		if isFlagToken(arg) {
 			// 长格式: --name value 或 --name=value
 			name, value := parseLongFlag(arg)
-			if value == "" && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			def, exists := flagDefs[name]
+			if !exists {
+				return nil, fmt.Errorf("unknown flag: --%s", name)
+			}
+			if value == "" && i+1 < len(args) && !isFlagToken(args[i+1]) {
 				value = args[i+1]
 				i++
+			}
+			// bool flag 支持无值写法：--flag 等价于 --flag=true
+			if value == "" && def.Type == FlagTypeBool {
+				value = "true"
 			}
 			values[name] = value
 		}
@@ -170,6 +181,15 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 			}
 		}
 
+		// bool flag 统一标准化
+		if flag.Type == FlagTypeBool {
+			normalized, err := normalizeBoolFlag(value)
+			if err != nil {
+				return nil, fmt.Errorf("invalid bool value '%s' for --%s, %s", value, flag.Name, err.Error())
+			}
+			value = normalized
+		}
+
 		// 应用 flag
 		if flag.Apply != nil {
 			opt, err := flag.Apply(value)
@@ -184,62 +204,10 @@ func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*
 		}
 	}
 
-	// 特殊处理：组合 Docker 连接参数
-	if dockerType, ok := values["docker-type"]; ok {
-		dockerHost, _ := values["docker-host"]
-		tls, _ := values["tls"]
-		tlsPath, _ := values["tls-path"]
-		sshUser, _ := values["ssh-user"]
-		sshPassword, _ := values["ssh-password"]
-		sshKey, _ := values["ssh-key"]
-
-		switch dockerType {
-		case types.DockerConnLocal:
-			// 本地连接由 WithContainerSock 处理
-		case types.DockerConnTCP:
-			if dockerHost != "" {
-				tlsVerify := tls == "true"
-				opts = append(opts, func(cfg *config.Config) error {
-					return config.WithContainerTCP(dockerHost, 2376, tlsVerify)(cfg)
-				})
-				if tlsVerify && tlsPath != "" {
-					opts = append(opts, func(cfg *config.Config) error {
-						return config.WithContainerTLS(
-							tlsPath+"/ca.pem",
-							tlsPath+"/cert.pem",
-							tlsPath+"/key.pem",
-						)(cfg)
-					})
-				}
-			}
-		case types.DockerConnSSH:
-			if dockerHost != "" {
-				opts = append(opts, func(cfg *config.Config) error {
-					return config.WithContainerSSH(dockerHost, 22, sshUser)(cfg)
-				})
-				if sshPassword != "" || sshKey != "" {
-					opts = append(opts, func(cfg *config.Config) error {
-						return config.WithContainerSSHAuth(sshPassword, sshKey)(cfg)
-					})
-				}
-			}
-		}
-	}
-
 	return opts, nil
 }
 
 // parseLongFlag 解析长格式 flag
-func parseLongFlag(arg string) (name, value string) {
-	// 去掉 --
-	arg = arg[2:]
-	// 检查是否包含 =
-	if idx := strings.Index(arg, "="); idx >= 0 {
-		return arg[:idx], arg[idx+1:]
-	}
-	return arg, ""
-}
-
 // showRootHelp 显示根帮助
 func (c *CLI) showRootHelp() {
 	fmt.Println()
@@ -309,8 +277,15 @@ func (c *CLI) showVersion() {
 }
 
 // parseBool 解析 bool 值
-func parseBool(s string) bool {
-	return s == "true" || s == "1" || s == "yes"
+func parseBool(s string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "1", "yes":
+		return true, true
+	case "false", "0", "no":
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // parseInt 解析 int 值
