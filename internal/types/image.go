@@ -6,6 +6,13 @@ const (
 	ImageNamePE = "dpanel/dpanel-pe" // 专业版
 )
 
+// === 镜像仓库 ===
+const (
+	RegistryDockerHub   = "docker.io" // Docker Hub Index
+	RegistryAliYun      = "registry.cn-hangzhou.aliyuncs.com"
+	RegistryUnavailable = "unavailable"
+)
+
 // === 镜像 Tag（Alpine 基础） ===
 const (
 	TagLatest   = "latest"    // standard + alpine
@@ -14,16 +21,6 @@ const (
 	TagBetaLite = "beta-lite" // be + lite + alpine
 )
 
-// === 镜像 Tag（Debian 基础） ===
 const (
-	TagLatestDebian   = "latest-debian"    // standard + debian
-	TagLiteDebian     = "lite-debian"      // lite + debian
-	TagBetaDebian     = "beta-debian"      // be + standard + debian
-	TagBetaLiteDebian = "beta-lite-debian" // be + lite + debian
-)
-
-// === 旧常量（兼容） ===
-const (
-	ImageNameCommunity = ImageNameCE
-	ImageNamePro       = ImageNamePE
+	TagDebian = "debian"
 )

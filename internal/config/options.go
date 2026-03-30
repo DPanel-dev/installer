@@ -3,7 +3,8 @@ package config
 import (
 	"fmt"
 
-	"github.com/dpanel-dev/installer/internal/types"
+	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
+	dockerclient "github.com/moby/moby/client"
 )
 
 // === 基础配置 Options ===
@@ -103,15 +104,20 @@ func WithDataPath(path string) Option {
 // WithContainerSock 设置本地 socket 连接
 func WithContainerSock(address string) Option {
 	return func(c *Config) error {
-		if c.Env.ContainerConn == nil {
-			c.Env.ContainerConn = &ContainerConn{Engine: types.ContainerEngineDocker}
-		}
-		c.Env.ContainerConn.Type = types.ContainerConnTypeSock
 		if address == "" {
-			c.Env.ContainerConn.Address = "unix:///var/run/docker.sock"
-		} else {
-			c.Env.ContainerConn.Address = address
+			address = "/var/run/docker.sock"
 		}
+
+		host := dockerpkg.NormalizeHost(address)
+		cli, err := dockerpkg.New(dockerclient.WithHost(host))
+		if err != nil {
+			return nil
+		}
+
+		if c.Client != nil && c.Client != cli && c.Client.Client != nil {
+			_ = c.Client.Client.Close()
+		}
+		c.Client = cli
 		return nil
 	}
 }

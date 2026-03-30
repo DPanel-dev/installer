@@ -5,11 +5,23 @@ const (
 	VersionCE = "ce" // 社区版
 	VersionPE = "pe" // 专业版
 	VersionBE = "be" // 开发版
-)
 
-// === 旧常量（兼容） ===
-const (
 	VersionCommunity = VersionCE
 	VersionPro       = VersionPE
 	VersionDev       = VersionBE
+)
+
+// === 版本类型 ===
+const (
+	EditionStandard = "standard"
+	EditionLite     = "lite"
+)
+
+// === 容器基础镜像系统 ===
+const (
+	ImageBaseAlpine = "alpine"
+	ImageBaseDebian = "debian"
+
+	BaseImageAlpine = ImageBaseAlpine
+	BaseImageDebian = ImageBaseDebian
 )

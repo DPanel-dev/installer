@@ -4,13 +4,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/dpanel-dev/installer/internal/types"
+	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
 )
 
 // Config 安装配置
 type Config struct {
+	OS   string
+	Arch string
+
 	// === 操作类型 ===
 	Action string // install, upgrade, uninstall
 	// === 配置流程状态 ===
@@ -44,11 +49,10 @@ type Config struct {
 	// === 卸载配置 ===
 	UninstallRemoveData bool
 
-	// === 环境检测结果 ===
-	Env *EnvCheck
-
 	// === TUI 临时状态 ===
 	State map[string]any
+
+	Client *dockerpkg.Client
 }
 
 // Option 配置选项函数
@@ -57,11 +61,16 @@ type Option func(*Config) error
 // NewConfig 创建配置（自动检测环境 + 智能默认值）
 func NewConfig(opts ...Option) (*Config, error) {
 	c := &Config{
-		State: make(map[string]any),
+		State:       make(map[string]any),
+		InstallType: types.InstallTypeBinary,
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
 	}
 
-	// 1. 执行环境检测
-	c.Env = NewEnvCheck()
+	if cli, err := dockerpkg.New(); err == nil {
+		c.Client = cli
+		c.InstallType = types.InstallTypeContainer
+	}
 
 	// 2. 镜像源默认为空，由 TUI 在运行时检测
 	c.Registry = ""
@@ -74,26 +83,19 @@ func NewConfig(opts ...Option) (*Config, error) {
 	// 语言
 	c.Language = types.LanguageZh
 
-	// ===== 安装类型 =====
-	if c.Env.ContainerConn != nil {
-		c.InstallType = types.InstallTypeContainer
-	} else {
-		c.InstallType = types.InstallTypeBinary
-	}
-
 	// ===== 版本配置 =====
-	c.Version = types.VersionCommunity
+	c.Version = types.VersionCE
 	c.Edition = types.EditionLite
 
 	// 基础镜像：二进制安装时根据系统 libc 类型自动选择
+	c.BaseImage = types.ImageBaseAlpine
+
 	if c.InstallType == types.InstallTypeBinary {
 		if IsMusl() {
-			c.BaseImage = types.BaseImageAlpine
+			c.BaseImage = types.ImageBaseAlpine
 		} else {
-			c.BaseImage = types.BaseImageDebian
+			c.BaseImage = types.ImageBaseDebian
 		}
-	} else {
-		c.BaseImage = types.BaseImageAlpine
 	}
 
 	// ===== 容器配置 =====
@@ -161,17 +163,17 @@ func (c *Config) GetImageName() string {
 
 	// 开发版前缀
 	if c.Version == types.VersionBE {
-		tagParts = append(tagParts, "beta")
+		tagParts = append(tagParts, types.TagBeta)
 	}
 
 	// 精简版
 	if c.Edition == types.EditionLite {
-		tagParts = append(tagParts, "lite")
+		tagParts = append(tagParts, types.TagLite)
 	}
 
 	// Debian 基础镜像
-	if c.BaseImage == types.BaseImageDebian {
-		tagParts = append(tagParts, "debian")
+	if c.BaseImage == types.ImageBaseDebian {
+		tagParts = append(tagParts, types.TagDebian)
 	}
 
 	// 组合 Tag

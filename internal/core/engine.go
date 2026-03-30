@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/types"
+	docker "github.com/dpanel-dev/installer/pkg/docker"
+	dockerclient "github.com/moby/moby/client"
 )
 
 // Engine handles the installation process
@@ -102,7 +105,7 @@ func (e *Engine) checkEnvironment() error {
 	slog.Info("Checking environment")
 
 	// Check Docker/Podman availability
-	if e.Config.InstallType == types.InstallTypeContainer{
+	if e.Config.InstallType == types.InstallTypeContainer {
 		if err := e.checkDocker(); err != nil {
 			return err
 		}
@@ -121,94 +124,46 @@ func (e *Engine) checkEnvironment() error {
 func (e *Engine) checkDocker() error {
 	slog.Info("Checking Docker/Podman availability")
 
-	container := e.Config.Env.ContainerConn
-	if container == nil {
+	client := e.Config.Client
+	if client == nil || client.Client == nil {
 		return fmt.Errorf("no container runtime available")
 	}
 
-	// 确定运行时命令
-	runtimeCmd := "docker"
-	if container.Engine == types.ContainerEnginePodman {
-		runtimeCmd = "podman"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := client.Client.Ping(ctx, dockerclient.PingOptions{}); err != nil {
+		return fmt.Errorf("container service is not available: %w", err)
 	}
 
-	// 检查命令是否存在
-	if _, err := exec.LookPath(runtimeCmd); err != nil {
-		return fmt.Errorf("%s command not found", runtimeCmd)
-	}
-
-	slog.Info("Container runtime found", "engine", container.Engine)
-
-	// 本地连接需要测试服务可用性
-	if container.IsLocal() {
-		if err := e.testDockerService(runtimeCmd); err != nil {
-			return fmt.Errorf("%s service is not available: %w", runtimeCmd, err)
-		}
-		slog.Info("Container service is available", "engine", container.Engine)
-	}
-
+	slog.Info("Container service is available", "address", client.Client.DaemonHost())
 	return nil
-}
-
-// testDockerService tests if docker/podman service is actually running
-func (e *Engine) testDockerService(runtime string) error {
-	// Test with docker ps command with timeout
-	cmd := exec.Command(runtime, "ps")
-
-	// Create a timeout channel
-	done := make(chan error, 1)
-	go func() {
-		done <- cmd.Run()
-	}()
-
-	// Wait for command or timeout
-	select {
-	case err := <-done:
-		if err != nil {
-			return fmt.Errorf("%s ps failed: %w", runtime, err)
-		}
-		return nil
-	case <-time.After(5 * time.Second):
-		// Timeout - try to kill the process
-		_ = cmd.Process.Kill()
-		return fmt.Errorf("%s ps timed out - service may not be running", runtime)
-	}
 }
 
 // checkDockerConnection verifies Docker connection
 func (e *Engine) checkDockerConnection() error {
-	container := e.Config.Env.ContainerConn
-	if container == nil {
+	if e.Config.Client == nil || e.Config.Client.Client == nil {
 		return fmt.Errorf("no container connection configured")
 	}
 
-	slog.Info("Checking container connection", "type", container.Type, "address", container.Address)
+	host := e.Config.Client.Client.DaemonHost()
+	sockPath := docker.SockPathFromHost(host)
 
-	switch container.Type {
-	case types.ContainerConnTypeSock:
-		return e.checkSockConnection(container)
-	default:
+	slog.Info("Checking container connection", "address", host)
+	if sockPath == "" {
 		return fmt.Errorf("only local socket connection is supported in installer")
 	}
+	return e.checkSockConnection(sockPath)
 }
 
 // checkSockConnection checks local socket file
-func (e *Engine) checkSockConnection(conn *config.ContainerConn) error {
-	address := conn.Address
-	if address == "" {
-		address = "unix:///var/run/docker.sock"
+func (e *Engine) checkSockConnection(sockPath string) error {
+	if sockPath == "" {
+		sockPath = "/var/run/docker.sock"
 	}
-
-	// 提取 socket 路径
-	var sockPath string
-	if strings.HasPrefix(address, "unix://") {
-		sockPath = address[7:]
-	} else if strings.HasPrefix(address, "npipe://") {
-		// Windows named pipe, 无需检查文件
-		slog.Info("Windows named pipe connection", "address", address)
+	if strings.HasPrefix(sockPath, "npipe://") {
+		slog.Info("Windows named pipe connection", "address", sockPath)
 		return nil
-	} else {
-		sockPath = address
 	}
 
 	slog.Info("Checking local socket", "path", sockPath)
@@ -265,8 +220,8 @@ func (e *Engine) logInstallationConfig() {
 	slog.Info("Container Name", "name", cfg.ContainerName)
 	slog.Info("Port", "port", cfg.Port)
 	slog.Info("Data Path", "path", cfg.DataPath)
-	if cfg.Env.ContainerConn != nil {
-		slog.Info("Container Connection", "type", cfg.Env.ContainerConn.Type, "address", cfg.Env.ContainerConn.Address)
+	if cfg.Client != nil && cfg.Client.Client != nil {
+		slog.Info("Container Connection", "address", cfg.Client.Client.DaemonHost())
 	}
 	if cfg.HTTPProxy != "" {
 		slog.Info("HTTP Proxy", "proxy", cfg.HTTPProxy)
@@ -323,8 +278,8 @@ func (e *Engine) saveInstallationLog(command string) error {
 	fmt.Fprintf(file, "Container Name: %s\n", e.Config.ContainerName)
 	fmt.Fprintf(file, "Port: %d\n", e.Config.Port)
 	fmt.Fprintf(file, "Data Path: %s\n", e.Config.DataPath)
-	if e.Config.Env.ContainerConn != nil {
-		fmt.Fprintf(file, "Container Connection: %s\n", e.Config.Env.ContainerConn.Address)
+	if e.Config.Client != nil && e.Config.Client.Client != nil {
+		fmt.Fprintf(file, "Container Connection: %s\n", e.Config.Client.Client.DaemonHost())
 	}
 	fmt.Fprintf(file, "\n=== Execution Command ===\n")
 	fmt.Fprintf(file, "%s\n", command)
@@ -382,25 +337,12 @@ func (e *Engine) installBinary() error {
 func (e *Engine) buildDockerCommand() (string, error) {
 	cfg := e.Config
 
-	// Determine if using podman
-	usePodman := false
-	if _, err := exec.LookPath("docker"); err != nil {
-		if _, err := exec.LookPath("podman"); err == nil {
-			usePodman = true
-		}
-	}
-
-	runtime := "docker"
-	if usePodman {
-		runtime = "podman"
-	}
-
 	// Build image name
 	image := e.buildImageName()
 
 	// Build command parts
 	var parts []string
-	parts = append(parts, runtime, "run", "-d")
+	parts = append(parts, "docker", "run", "-d")
 	parts = append(parts, "--name", cfg.ContainerName)
 
 	// Restart policy
@@ -447,8 +389,10 @@ func (e *Engine) buildDockerCommand() (string, error) {
 	// Volumes
 	// 从 Container 配置获取 socket 路径
 	sockPath := "/var/run/docker.sock" // 默认值
-	if cfg.Env.ContainerConn != nil && strings.HasPrefix(cfg.Env.ContainerConn.Address, "unix://") {
-		sockPath = cfg.Env.ContainerConn.Address[7:]
+	if cfg.Client != nil && cfg.Client.Client != nil {
+		if clientSockPath := docker.SockPathFromHost(cfg.Client.Client.DaemonHost()); clientSockPath != "" {
+			sockPath = clientSockPath
+		}
 	}
 	parts = append(parts, "-v", fmt.Sprintf("%s:/var/run/docker.sock", sockPath))
 	parts = append(parts, "-v", fmt.Sprintf("%s:/dpanel", cfg.DataPath))

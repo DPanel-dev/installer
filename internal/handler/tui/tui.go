@@ -13,6 +13,7 @@ import (
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/handler"
 	"github.com/dpanel-dev/installer/internal/types"
+	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
 	"github.com/dpanel-dev/installer/pkg/i18n"
 )
 
@@ -923,11 +924,11 @@ func (t *TUI) renderConfirm() string {
 	if cfg.InstallType == types.InstallTypeContainer {
 		details = append(details, [2]string{i18n.T("select_base_image"), cfg.BaseImage})
 
-		connType := "local"
-		if cfg.Env.ContainerConn != nil {
-			connType = string(cfg.Env.ContainerConn.Type)
+		if cfg.Client != nil && cfg.Client.Client != nil {
+			if sockPath := dockerpkg.SockPathFromHost(cfg.Client.Client.DaemonHost()); sockPath != "" {
+				details = append(details, [2]string{i18n.T("docker_connection"), sockPath})
+			}
 		}
-		details = append(details, [2]string{i18n.T("docker_connection"), connType})
 
 		if cfg.HTTPProxy != "" {
 			details = append(details, [2]string{i18n.T("proxy_address"), cfg.HTTPProxy})

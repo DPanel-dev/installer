@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -9,142 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/dpanel-dev/installer/internal/types"
 )
-
-// DetectDocker 检测 Docker 并返回连接配置
-func DetectDocker() *ContainerConn {
-	// 1. 命令不存在
-	if _, err := exec.LookPath("docker"); err != nil {
-		return nil
-	}
-
-	// 2. 使用 docker context inspect 获取连接信息
-	out, err := exec.Command("docker", "context", "inspect", "--format", "json").CombinedOutput()
-	if err != nil {
-		slog.Debug("docker context inspect failed", "error", err)
-		return nil
-	}
-
-	// dockerContext Docker context 信息（JSON 解析用）
-	type dockerContext struct {
-		Endpoints struct {
-			Docker struct {
-				Host          string `json:"Host"`
-				SkipTLSVerify bool   `json:"SkipTLSVerify"`
-			} `json:"docker"`
-		} `json:"Endpoints"`
-	}
-
-	// 3. 解析 JSON（可能是数组）
-	var contexts []dockerContext
-	if err := json.Unmarshal(out, &contexts); err != nil {
-		slog.Debug("Failed to parse docker context", "error", err)
-		return nil
-	}
-
-	if len(contexts) == 0 {
-		return nil
-	}
-
-	ctx := contexts[0]
-	host := ctx.Endpoints.Docker.Host
-
-	// 4. 默认值
-	if host == "" {
-		host = "unix:///var/run/docker.sock"
-	}
-
-	conn := &ContainerConn{
-		Engine:    types.ContainerEngineDocker,
-		TLSVerify: !ctx.Endpoints.Docker.SkipTLSVerify,
-	}
-
-	// 5. 根据地址判断类型
-	if strings.HasPrefix(host, "unix://") {
-		conn.Type = types.ContainerConnTypeSock
-		conn.Address = host
-		return conn
-	}
-
-	if strings.HasPrefix(host, "npipe://") {
-		conn.Type = types.ContainerConnTypeSock
-		conn.Address = host
-		return conn
-	}
-
-	if strings.HasPrefix(host, "tcp://") || strings.HasPrefix(host, "ssh://") {
-		slog.Debug("remote docker context is not supported in installer", "host", host)
-		return nil
-	}
-
-	// 未知格式按不支持处理
-	slog.Debug("unsupported docker host format in installer", "host", host)
-	return nil
-}
-
-// DetectPodman 检测 Podman 并返回连接配置
-func DetectPodman() *ContainerConn {
-	// 1. 命令不存在
-	if _, err := exec.LookPath("podman"); err != nil {
-		return nil
-	}
-
-	conn := &ContainerConn{
-		Engine: types.ContainerEnginePodman,
-	}
-
-	// 2. 获取 sock 路径
-	switch runtime.GOOS {
-	case "linux":
-		// 优先 XDG_RUNTIME_DIR
-		if dir := os.Getenv("XDG_RUNTIME_DIR"); dir != "" {
-			sockPath := filepath.Join(dir, "podman", "podman.sock")
-			if _, err := os.Stat(sockPath); err == nil {
-				conn.Type = types.ContainerConnTypeSock
-				conn.Address = "unix://" + sockPath
-				return conn
-			}
-		}
-		// 备选 /run/user/{uid}
-		if uid := os.Getuid(); uid > 0 {
-			sockPath := fmt.Sprintf("/run/user/%d/podman/podman.sock", uid)
-			if _, err := os.Stat(sockPath); err == nil {
-				conn.Type = types.ContainerConnTypeSock
-				conn.Address = "unix://" + sockPath
-				return conn
-			}
-		}
-		// rootful sock
-		if _, err := os.Stat("/run/podman/podman.sock"); err == nil {
-			conn.Type = types.ContainerConnTypeSock
-			conn.Address = "unix:///run/podman/podman.sock"
-			return conn
-		}
-	case "darwin":
-		// macOS
-		home, _ := os.UserHomeDir()
-		sockPath := filepath.Join(home, ".local", "share", "containers", "podman", "machine", "default", "podman.sock")
-		if _, err := os.Stat(sockPath); err == nil {
-			conn.Type = types.ContainerConnTypeSock
-			conn.Address = "unix://" + sockPath
-			return conn
-		}
-	}
-
-	// 有命令但没找到 sock，返回 nil（Podman 存在但未运行）
-	return nil
-}
-
-// TestRegistryConnectivity 测试镜像仓库连通性
-func TestRegistryConnectivity(host string) bool {
-	latency := TestRegistryLatency(host)
-	return latency > 0
-}
 
 // TestRegistryLatency 测试镜像仓库延迟（毫秒），0 表示不可用
 func TestRegistryLatency(host string) int {

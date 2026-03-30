@@ -8,13 +8,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/script"
 	"github.com/dpanel-dev/installer/internal/types"
+	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
 	"github.com/dpanel-dev/installer/pkg/i18n"
+	dockerclient "github.com/moby/moby/client"
 )
 
 // StepDefinitions 步骤定义注册表
@@ -84,19 +85,19 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "install_method",
 		Message: func(cfg *config.Config) *MessageContent {
 			// 有本地容器连接时不需要提示
-			if cfg.Env.ContainerConn != nil && ((cfg.Env.ContainerConn.IsDocker() && cfg.Env.ContainerConn.IsLocal()) || cfg.Env.ContainerConn.IsPodman()) {
+			if cfg.Client != nil && cfg.Client.Client != nil {
 				return nil
 			}
 
 			// 没有本地容器连接
-			if cfg.Env.OS == "linux" {
+			if cfg.OS == "linux" {
 				return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("docker_not_found_linux_hint")}
 			}
 			return &MessageContent{Type: MessageTypeInfo, Content: i18n.T("docker_not_found_desktop_hint")}
 		},
 		Options: func(cfg *config.Config) []OptionItem {
 			// 有本地容器连接（Docker/Podman 可用）
-			if cfg.Env.ContainerConn != nil && ((cfg.Env.ContainerConn.IsDocker() && cfg.Env.ContainerConn.IsLocal()) || cfg.Env.ContainerConn.IsPodman()) {
+			if cfg.Client != nil && cfg.Client.Client != nil {
 				return []OptionItem{
 					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
 					{Value: types.InstallTypeBinary, Label: "binary_install", Description: "binary_install_desc"},
@@ -130,12 +131,12 @@ var StepDefinitions = map[Step]StepDefinition{
 
 			// 选择容器安装
 			// 有本地容器连接 -> 跳转到版本选择
-			if cfg.Env.ContainerConn != nil {
+			if cfg.Client != nil && cfg.Client.Client != nil {
 				return StepVersion
 			}
 
 			// 没有本地容器连接 + Linux -> 跳转到确认在线安装 Docker
-			if cfg.Env.OS == "linux" {
+			if cfg.OS == "linux" {
 				return StepInstallDocker
 			}
 
@@ -206,10 +207,15 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 
 			// 4. 验证安装
-			if _, err := exec.LookPath("docker"); err != nil {
-				cfg.State["docker_install_error"] = "docker command not found after installation"
+			cli, err := dockerpkg.New()
+			if err != nil {
+				cfg.State["docker_install_error"] = "docker engine is not available after installation"
 				return nil
 			}
+			if cfg.Client != nil && cfg.Client != cli && cfg.Client.Client != nil {
+				_ = cfg.Client.Client.Close()
+			}
+			cfg.Client = cli
 
 			cfg.State["docker_install_success"] = true
 			return nil
@@ -217,8 +223,6 @@ var StepDefinitions = map[Step]StepDefinition{
 		Next: func(cfg *config.Config) Step {
 			success, _ := cfg.State["docker_install_success"].(bool)
 			if success {
-				// 安装成功 -> 重新检测环境
-				cfg.Env = config.NewEnvCheck()
 				return StepVersion
 			}
 			// 安装失败 -> 切换到二进制安装
@@ -301,13 +305,9 @@ var StepDefinitions = map[Step]StepDefinition{
 
 			// 显示当前检测到的 sock 路径
 			currentSock := "/var/run/docker.sock"
-			if cfg.Env.ContainerConn != nil && cfg.Env.ContainerConn.Address != "" {
-				// 去掉 unix:// 前缀
-				addr := cfg.Env.ContainerConn.Address
-				if strings.HasPrefix(addr, "unix://") {
-					currentSock = addr[7:]
-				} else {
-					currentSock = addr
+			if cfg.Client != nil && cfg.Client.Client != nil {
+				if sockPath := dockerpkg.SockPathFromHost(cfg.Client.Client.DaemonHost()); sockPath != "" {
+					currentSock = sockPath
 				}
 			}
 			var uid string
@@ -326,13 +326,9 @@ var StepDefinitions = map[Step]StepDefinition{
 		Options: func(cfg *config.Config) []OptionItem {
 			// 默认值：检测环境中的 sock 路径
 			defaultSock := "/var/run/docker.sock"
-			if cfg.Env.ContainerConn != nil && cfg.Env.ContainerConn.Address != "" {
-				// 去掉 unix:// 前缀
-				addr := cfg.Env.ContainerConn.Address
-				if strings.HasPrefix(addr, "unix://") {
-					defaultSock = addr[7:]
-				} else {
-					defaultSock = addr
+			if cfg.Client != nil && cfg.Client.Client != nil {
+				if sockPath := dockerpkg.SockPathFromHost(cfg.Client.Client.DaemonHost()); sockPath != "" {
+					defaultSock = sockPath
 				}
 			}
 			return []OptionItem{
@@ -344,13 +340,17 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			if cfg.Env.ContainerConn == nil {
-				cfg.Env.ContainerConn = &config.ContainerConn{
-					Engine: types.ContainerEngineDocker,
-					Type:   string(types.ContainerConnTypeSock),
-				}
+			host := dockerpkg.NormalizeHost(value)
+			cli, err := dockerpkg.New(dockerclient.WithHost(host))
+			if err != nil {
+				cfg.State["docker_sock_error"] = err.Error()
+				return nil
 			}
-			cfg.Env.ContainerConn.Address = value
+
+			if cfg.Client != nil && cfg.Client != cli && cfg.Client.Client != nil {
+				_ = cfg.Client.Client.Close()
+			}
+			cfg.Client = cli
 			return nil
 		},
 		Next: NextStep(StepContainerName),
