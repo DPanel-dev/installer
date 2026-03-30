@@ -93,10 +93,6 @@ func (t *TUI) Run(cfg *config.Config) error {
 		return nil // 用户中途退出
 	}
 
-	// TUI 流程完成，允许主流程执行引擎
-	t.cfg.Finished = true
-
-	// 配置完成，由 main 调用 engine 执行
 	return nil
 }
 

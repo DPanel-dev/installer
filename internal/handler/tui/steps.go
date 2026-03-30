@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"time"
 
 	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/script"
 	"github.com/dpanel-dev/installer/internal/types"
 	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
@@ -551,9 +551,8 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeProgress,
 		TitleKey: "installing",
 		Finish: func(cfg *config.Config, value string) error {
-			// 临时用于预览失败界面：模拟安装失败
-			time.Sleep(3 * time.Second)
-			return nil
+			engine := core.NewEngine(cfg)
+			return engine.Run()
 		},
 		Next: NextStep(StepComplete),
 	},

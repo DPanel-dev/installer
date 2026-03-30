@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dpanel-dev/installer/internal/config"
+	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler"
 )
 
@@ -108,10 +109,8 @@ func (c *CLI) run(cfg *config.Config) error {
 		}
 	}
 
-	// 命令解析与配置应用完成，允许主流程执行引擎
-	cfg.Finished = true
-
-	return nil
+	engine := core.NewEngine(cfg)
+	return engine.Run()
 }
 
 // parseCommandFlags 解析子命令的 flags

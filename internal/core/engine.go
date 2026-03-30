@@ -29,11 +29,7 @@ func NewEngine(cfg *config.Config) *Engine {
 
 // Run executes the installation based on the configured action
 func (e *Engine) Run() error {
-	slog.Info("Starting installation engine",
-		"action", e.Config.Action,
-		"installType", e.Config.InstallType,
-		"version", e.Config.Version,
-	)
+	e.logRuntimeConfig()
 
 	switch e.Config.Action {
 	case types.ActionInstall:
@@ -45,6 +41,32 @@ func (e *Engine) Run() error {
 	default:
 		return fmt.Errorf("unknown action: %s", e.Config.Action)
 	}
+}
+
+func (e *Engine) logRuntimeConfig() {
+	cfg := e.Config
+
+	attrs := []any{
+		"os", cfg.OS,
+		"arch", cfg.Arch,
+		"action", cfg.Action,
+		"language", cfg.Language,
+		"install_type", cfg.InstallType,
+		"version", cfg.Version,
+		"edition", cfg.Edition,
+		"base_image", cfg.BaseImage,
+		"registry", cfg.Registry,
+		"container_name", cfg.ContainerName,
+		"port", cfg.Port,
+		"data_path", cfg.DataPath,
+		"dns", cfg.DNS,
+		"http_proxy", cfg.HTTPProxy,
+		"https_proxy", cfg.HTTPSProxy,
+		"upgrade_backup", cfg.UpgradeBackup,
+		"uninstall_remove_data", cfg.UninstallRemoveData,
+	}
+
+	slog.Info("Installation config", attrs...)
 }
 
 // install performs the installation

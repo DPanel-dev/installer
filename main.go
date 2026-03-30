@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/dpanel-dev/installer/internal/config"
-	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler/cli"
 	"github.com/dpanel-dev/installer/internal/handler/tui"
 )
@@ -58,16 +57,7 @@ func run() error {
 		return handlerErr
 	}
 
-	// 仅在配置流程完成后执行安装引擎
-	if !cfg.Finished {
-		slog.Info("Configuration not finished, skip engine execution")
-		return nil
-	}
-
-	// 执行安装
-	slog.Info("Configuration complete, starting installation")
-	engine := core.NewEngine(cfg)
-	return engine.Run()
+	return nil
 }
 
 // setupLogger 设置日志记录器

@@ -131,7 +131,7 @@
   "browse_empty_dir": "(空目录或无法读取)",
   "help_language": "↑/↓ 选择 | Enter 确认 | Esc 返回 | Ctrl+C 退出",
   "help_input": "Enter 确认 | Esc 返回 | Ctrl+C 退出",
-  "help_path_input": "Tab 浏览 | Enter 确认 | Esc 返回 | Ctrl+C 退出",
+  "help_path_input": "Tab 浏览目录 | Enter 确认 | Esc 返回 | Ctrl+C 退出",
   "help_browse": "↑/↓ 选择 | Space 进入 | Enter 确认 | Esc 取消 | Ctrl+C 退出",
   "help_default": "↑/↓ 选择 | Enter 确认 | Esc 返回 | Ctrl+C 退出",
   "enter_value": "输入值",
