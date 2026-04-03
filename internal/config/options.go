@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
 	dockerclient "github.com/moby/moby/client"
@@ -111,7 +112,7 @@ func WithContainerSock(address string) Option {
 		host := dockerpkg.NormalizeHost(address)
 		cli, err := dockerpkg.New(dockerclient.WithHost(host))
 		if err != nil {
-			return nil
+			return err
 		}
 
 		if c.Client != nil && c.Client != cli && c.Client.Client != nil {
@@ -132,18 +133,10 @@ func WithDNS(dns string) Option {
 	}
 }
 
-// WithHTTPProxy 设置 HTTP 代理
+// WithHTTPProxy 设置代理（同时用于 HTTP 和 HTTPS）
 func WithHTTPProxy(proxy string) Option {
 	return func(c *Config) error {
 		c.HTTPProxy = proxy
-		return nil
-	}
-}
-
-// WithHTTPSProxy 设置 HTTPS 代理
-func WithHTTPSProxy(proxy string) Option {
-	return func(c *Config) error {
-		c.HTTPSProxy = proxy
 		return nil
 	}
 }
@@ -164,6 +157,46 @@ func WithUpgradeBackup(backup bool) Option {
 func WithUninstallRemoveData(remove bool) Option {
 	return func(c *Config) error {
 		c.UninstallRemoveData = remove
+		return nil
+	}
+}
+
+// === 二进制配置 Options ===
+
+// WithBinaryPath 设置二进制安装路径（Windows 自动补 .exe 后缀）
+func WithBinaryPath(path string) Option {
+	return func(c *Config) error {
+		if path == "" {
+			return fmt.Errorf("binary path cannot be empty")
+		}
+		if c.OS == "windows" && !strings.HasSuffix(strings.ToLower(path), ".exe") {
+			path += ".exe"
+		}
+		c.BinaryPath = path
+		return nil
+	}
+}
+
+// WithOS 设置操作系统（仅用于测试覆盖）
+func WithOS(os string) Option {
+	return func(c *Config) error {
+		c.OS = os
+		return nil
+	}
+}
+
+// WithArch 设置架构（仅用于测试覆盖）
+func WithArch(arch string) Option {
+	return func(c *Config) error {
+		c.Arch = arch
+		return nil
+	}
+}
+
+// WithClient 设置 Docker client
+func WithClient(cli *dockerpkg.Client) Option {
+	return func(c *Config) error {
+		c.Client = cli
 		return nil
 	}
 }

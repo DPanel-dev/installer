@@ -1609,6 +1609,7 @@ gosec ./...
 11. **命令记录**：所有安装过程和最终命令必须完整记录
 12. **使用常量**：所有配置值必须使用 `internal/install/constants.go` 中定义的常量，禁止硬编码字符串字面量
 13. **任务完成编译**：每次完成重要任务后，必须编译二进制文件到 runtime 目录：`go build -o runtime/dpanel-installer main.go`
+14. **代码拆分**：适当拆分代码，把辅助函数（如文件操作、OCI 镜像提取等）放到 `helpers.go`，保持主文件（如 `binary.go`）只包含核心业务逻辑
 
 ## 调试技巧
 

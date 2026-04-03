@@ -180,9 +180,7 @@ func (e *Engine) containerCreateOptions() (dockerclient.ContainerCreateOptions, 
 	env := []string{fmt.Sprintf("APP_NAME=%s", e.Config.ContainerName)}
 	if e.Config.HTTPProxy != "" {
 		env = append(env, fmt.Sprintf("HTTP_PROXY=%s", e.Config.HTTPProxy))
-	}
-	if e.Config.HTTPSProxy != "" {
-		env = append(env, fmt.Sprintf("HTTPS_PROXY=%s", e.Config.HTTPSProxy))
+		env = append(env, fmt.Sprintf("HTTPS_PROXY=%s", e.Config.HTTPProxy))
 	}
 
 	hostConfig := &containerapi.HostConfig{

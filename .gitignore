@@ -50,3 +50,5 @@ run.log
 # PROJECT_ANALYSIS_REPORT.md
 
 .idea
+
+tests/install-test/**

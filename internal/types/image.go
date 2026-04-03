@@ -13,14 +13,9 @@ const (
 	RegistryUnavailable = "unavailable"
 )
 
-// === 镜像 Tag（Alpine 基础） ===
+// === 镜像 Tag 基础 ===
 const (
-	TagLatest   = "latest"    // standard + alpine
-	TagLite     = "lite"      // lite + alpine
-	TagBeta     = "beta"      // be + standard + alpine
-	TagBetaLite = "beta-lite" // be + lite + alpine
-)
-
-const (
-	TagDebian = "debian"
+	TagLatest = "latest" // ce/pe standard
+	TagLite   = "lite"   // ce/pe lite
+	TagBeta   = "beta"   // be standard
 )

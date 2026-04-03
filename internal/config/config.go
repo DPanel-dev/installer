@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 
 	"github.com/dpanel-dev/installer/internal/types"
 	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
@@ -36,10 +35,12 @@ type Config struct {
 	Port          int // 0 = 随机端口
 	DataPath      string
 
+	// === 二进制配置 ===
+	BinaryPath string // 自定义二进制安装路径，为空则使用默认路径
+
 	// === 网络配置 ===
 	DNS        string
-	HTTPProxy  string
-	HTTPSProxy string
+	HTTPProxy string
 
 	// === 升级配置 ===
 	UpgradeBackup bool
@@ -59,61 +60,49 @@ type Option func(*Config) error
 // NewConfig 创建配置（自动检测环境 + 智能默认值）
 func NewConfig(opts ...Option) (*Config, error) {
 	c := &Config{
-		State:       make(map[string]any),
-		InstallType: types.InstallTypeBinary,
-		OS:          runtime.GOOS,
-		Arch:        runtime.GOARCH,
+		State: make(map[string]any),
+		OS:    runtime.GOOS,
+		Arch:  runtime.GOARCH,
 	}
 
+	// 1. Docker 检测（结构性初始化）
 	if cli, err := dockerpkg.New(); err == nil {
 		c.Client = cli
-		c.InstallType = types.InstallTypeContainer
 	}
 
-	// 2. 镜像源默认为空，由 TUI 在运行时检测
-	c.Registry = ""
+	// 2. 固定默认值
+	defaults := []Option{
+		WithAction(types.ActionInstall),
+		WithLanguage(types.LanguageZh),
+		WithVersion(types.VersionCE),
+		WithEdition(types.EditionLite),
+		WithContainerName("dpanel"),
+		WithUpgradeBackup(true),
+		WithUninstallRemoveData(false),
+	}
 
-	// 3. 根据环境设置最优默认值
-	// 操作类型
-	c.Action = types.ActionInstall
-
-	// 语言
-	c.Language = types.LanguageZh
-
-	// ===== 版本配置 =====
-	c.Version = types.VersionCE
-	c.Edition = types.EditionLite
-
-	// 基础镜像：二进制安装时根据系统 libc 类型自动选择
-	c.BaseImage = types.ImageBaseAlpine
-
-	if c.InstallType == types.InstallTypeBinary {
+	// 3. 根据环境 append
+	if c.Client != nil {
+		defaults = append(defaults, WithInstallType(types.InstallTypeContainer))
+	} else {
+		defaults = append(defaults, WithInstallType(types.InstallTypeBinary))
 		if IsMusl() {
-			c.BaseImage = types.ImageBaseAlpine
+			defaults = append(defaults, WithBaseImage(types.BaseImageAlpine))
 		} else {
-			c.BaseImage = types.ImageBaseDebian
+			defaults = append(defaults, WithBaseImage(types.BaseImageDebian))
 		}
 	}
 
-	// ===== 容器配置 =====
-	c.ContainerName = "dpanel"
-	c.Port = FindAvailablePort(8080)
+	defaults = append(defaults, WithPort(FindAvailablePort(8080)))
 
-	// 数据路径根据系统选择
 	homeDir, _ := os.UserHomeDir()
-	c.DataPath = filepath.Join(homeDir, "dpanel", "data")
+	defaults = append(defaults,
+		WithDataPath(filepath.Join(homeDir, "dpanel", "data")),
+		WithBinaryPath(filepath.Join(homeDir, "dpanel", "dpanel")),
+	)
 
-	// ===== 网络配置 =====
-	c.DNS = ""
-	c.HTTPProxy = ""
-	c.HTTPSProxy = ""
-
-	// ===== 升级/卸载配置 =====
-	c.UpgradeBackup = true
-	c.UninstallRemoveData = false
-
-	// 4. 应用用户自定义选项
-	for _, opt := range opts {
+	// 4. 先应用默认值，再应用用户覆盖
+	for _, opt := range append(defaults, opts...) {
 		if err := opt(c); err != nil {
 			return nil, err
 		}
@@ -141,7 +130,9 @@ func (c *Config) GetRegistry() string {
 }
 
 // GetImageName 获取镜像名称
-// 组合规则：版本(ce/pe/be) + 版本类型(standard/lite) + 基础镜像(alpine/debian)
+// Tag 格式：{base}[-{imageBase}]
+// base: beta | beta-lite | lite | latest
+// imageBase: debian | darwin | windows (alpine 无后缀)
 func (c *Config) GetImageName() string {
 	registry := c.GetRegistry()
 
@@ -154,29 +145,33 @@ func (c *Config) GetImageName() string {
 		name = types.ImageNameCE
 	}
 
-	// 2. 组合 Tag
-	// 格式：[beta-][lite-][debian]
-	var tagParts []string
-
-	// 开发版前缀
-	if c.Version == types.VersionBE {
-		tagParts = append(tagParts, types.TagBeta)
+	// 2. 组合 base tag
+	var baseTag string
+	switch {
+	case c.Version == types.VersionBE && c.Edition == types.EditionLite:
+		baseTag = types.TagBeta + "-" + types.TagLite
+	case c.Version == types.VersionBE:
+		baseTag = types.TagBeta
+	case c.Edition == types.EditionLite:
+		baseTag = types.TagLite
+	default:
+		baseTag = types.TagLatest
 	}
 
-	// 精简版
-	if c.Edition == types.EditionLite {
-		tagParts = append(tagParts, types.TagLite)
+	// 3. 追加基础系统后缀（alpine 无后缀）
+	suffix := ""
+	switch c.BaseImage {
+	case types.BaseImageDebian:
+		suffix = "debian"
+	case types.BaseImageDarwin:
+		suffix = "darwin"
+	case types.BaseImageWindows:
+		suffix = "windows"
 	}
 
-	// Debian 基础镜像
-	if c.BaseImage == types.ImageBaseDebian {
-		tagParts = append(tagParts, types.TagDebian)
-	}
-
-	// 组合 Tag
-	tag := strings.Join(tagParts, "-")
-	if tag == "" {
-		tag = "latest"
+	tag := baseTag
+	if suffix != "" {
+		tag += "-" + suffix
 	}
 
 	if registry != "" {

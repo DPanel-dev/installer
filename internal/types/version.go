@@ -19,9 +19,8 @@ const (
 
 // === 容器基础镜像系统 ===
 const (
-	ImageBaseAlpine = "alpine"
-	ImageBaseDebian = "debian"
-
-	BaseImageAlpine = ImageBaseAlpine
-	BaseImageDebian = ImageBaseDebian
+	BaseImageAlpine  = "alpine"
+	BaseImageDebian  = "debian"
+	BaseImageDarwin  = "darwin"
+	BaseImageWindows = "windows"
 )

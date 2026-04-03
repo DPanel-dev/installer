@@ -44,12 +44,7 @@ func (e *Engine) Run() error {
 			}()
 		case types.InstallTypeBinary:
 			slog.Info("Running binary upgrade")
-			return func() error {
-				if err := e.backupBinary(); err != nil {
-					return err
-				}
-				return e.upgradeBinary()
-			}()
+			return e.upgradeBinary()
 		}
 	case types.ActionUninstall:
 		switch e.Config.InstallType {
@@ -82,7 +77,7 @@ func (e *Engine) logRuntimeConfig() {
 		"data_path", cfg.DataPath,
 		"dns", cfg.DNS,
 		"http_proxy", cfg.HTTPProxy,
-		"https_proxy", cfg.HTTPSProxy,
+		"https_proxy", cfg.HTTPProxy,
 		"upgrade_backup", cfg.UpgradeBackup,
 		"uninstall_remove_data", cfg.UninstallRemoveData,
 	)

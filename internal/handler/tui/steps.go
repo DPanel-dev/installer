@@ -286,6 +286,8 @@ var StepDefinitions = map[Step]StepDefinition{
 			return []OptionItem{
 				{Value: types.BaseImageAlpine, Label: "alpine", Description: "alpine_desc"},
 				{Value: types.BaseImageDebian, Label: "debian", Description: "debian_desc"},
+				{Value: types.BaseImageDarwin, Label: "darwin", Description: "darwin_desc"},
+				{Value: types.BaseImageWindows, Label: "windows", Description: "windows_desc"},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
