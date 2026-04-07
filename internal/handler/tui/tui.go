@@ -970,7 +970,8 @@ func (t *TUI) renderHelp() string {
 // ========== 辅助函数 ==========
 
 func isTranslated(s string) bool {
-	return strings.ContainsAny(s, "中文简体") || strings.Contains(s, " ")
+	// 如果翻译结果和 key 不同，说明已翻译
+	return i18n.T(s) != s
 }
 
 // ========== 消息类型 ==========

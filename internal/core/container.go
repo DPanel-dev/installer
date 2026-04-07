@@ -236,5 +236,5 @@ func (e *Engine) currentSockPath() string {
 			return sockPath
 		}
 	}
-	return "/var/run/docker.sock"
+	return dockerpkg.DefaultDockerSockPath
 }

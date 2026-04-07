@@ -26,8 +26,6 @@
   "install_docker": "Install Docker",
   "install_docker_desc": "Install Docker/Podman automatically (Linux only)",
   "install_docker_linux_desc": "Install Docker automatically using the official script",
-  "skip_docker_install": "Skip Docker Installation",
-  "skip_docker_install_desc": "Skip and use binary installation instead",
   "container_install_disabled": "(Docker not available - requires manual installation)",
   "binary_only_notice": "Binary installation only (Docker/Podman not available)",
   "install_docker_prompt": "Confirm Online Docker Installation",

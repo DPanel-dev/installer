@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dpanel-dev/installer/internal/types"
 	dockerpkg "github.com/dpanel-dev/installer/pkg/docker"
 	dockerclient "github.com/moby/moby/client"
 )
@@ -106,7 +107,7 @@ func WithDataPath(path string) Option {
 func WithContainerSock(address string) Option {
 	return func(c *Config) error {
 		if address == "" {
-			address = "/var/run/docker.sock"
+			address = dockerpkg.DefaultDockerSockPath
 		}
 
 		host := dockerpkg.NormalizeHost(address)
@@ -169,7 +170,7 @@ func WithBinaryPath(path string) Option {
 		if path == "" {
 			return fmt.Errorf("binary path cannot be empty")
 		}
-		if c.OS == "windows" && !strings.HasSuffix(strings.ToLower(path), ".exe") {
+		if c.OS == types.BaseImageWindows && !strings.HasSuffix(strings.ToLower(path), ".exe") {
 			path += ".exe"
 		}
 		c.BinaryPath = path

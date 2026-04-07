@@ -2,11 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
-	"runtime"
 	"strconv"
 
 	"github.com/dpanel-dev/installer/internal/config"
@@ -48,13 +48,13 @@ var StepDefinitions = map[Step]StepDefinition{
 		TitleKey: "select_action",
 		Message: func(cfg *config.Config) *MessageContent {
 			// 网络不可用警告
-			if cfg.Registry == "unavailable" {
+			if cfg.Registry == types.RegistryUnavailable {
 				return &MessageContent{Type: MessageTypeWarning, Content: i18n.T("no_registry_available")}
 			}
 			return nil
 		},
 		Options: func(cfg *config.Config) []OptionItem {
-			canInstall := cfg.Registry != "unavailable"
+			canInstall := cfg.Registry != types.RegistryUnavailable
 			return []OptionItem{
 				{Value: types.ActionInstall, Label: "install_panel", Description: "install_panel_desc", Disabled: !canInstall},
 				{Value: types.ActionUpgrade, Label: "upgrade_panel", Description: "upgrade_panel_desc", Disabled: !canInstall},
@@ -105,7 +105,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 
 			// 没有本地容器连接
-			if runtime.GOOS == "linux" {
+			if cfg.OS == "linux" {
 				// Linux：可以在线安装 Docker（提示在 TUI 提示区域显示）
 				return []OptionItem{
 					{Value: types.InstallTypeContainer, Label: "container_install", Description: "container_install_desc"},
@@ -196,15 +196,15 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 			defer os.Remove(scriptPath)
 
-			// 3. 执行脚本
+			// 3. 执行脚本（捕获输出，避免污染 TUI）
 			cmd := exec.Command("sh", scriptPath)
-			cmd.Stdout = os.Stdout
-			cmd.Stderr = os.Stderr
-
-			if err := cmd.Run(); err != nil {
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				slog.Error("Docker install script failed", "error", err, "output", string(output))
 				cfg.State["docker_install_error"] = err.Error()
 				return nil
 			}
+			slog.Info("Docker install script output", "output", string(output))
 
 			// 4. 验证安装
 			cli, err := dockerpkg.New()
@@ -306,7 +306,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			var tips string
 
 			// 显示当前检测到的 sock 路径
-			currentSock := "/var/run/docker.sock"
+			currentSock := dockerpkg.DefaultDockerSockPath
 			if cfg.Client != nil && cfg.Client.Client != nil {
 				if sockPath := dockerpkg.SockPathFromHost(cfg.Client.Client.DaemonHost()); sockPath != "" {
 					currentSock = sockPath
@@ -318,7 +318,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			}
 			tips += i18n.T("sock_tips_1") + currentSock + "|"
 			tips += i18n.T("sock_tips_2") + "|"
-			tips += "sudo ln -s -f " + currentSock + " /var/run/docker.sock|"
+			tips += "sudo ln -s -f " + currentSock + " " + dockerpkg.DefaultDockerSockPath + "|"
 			tips += i18n.T("sock_tips_4") + "|"
 			tips += i18n.T("sock_tips_5") + "|"
 			tips += fmt.Sprintf(i18n.T("sock_tips_6"), uid)
@@ -327,7 +327,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Options: func(cfg *config.Config) []OptionItem {
 			// 默认值：检测环境中的 sock 路径
-			defaultSock := "/var/run/docker.sock"
+			defaultSock := dockerpkg.DefaultDockerSockPath
 			if cfg.Client != nil && cfg.Client.Client != nil {
 				if sockPath := dockerpkg.SockPathFromHost(cfg.Client.Client.DaemonHost()); sockPath != "" {
 					defaultSock = sockPath
@@ -371,7 +371,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.State["aliyun_latency"] = aliYunLatency
 
 			if dockerHubLatency == 0 && aliYunLatency == 0 {
-				cfg.Registry = "unavailable"
+				cfg.Registry = types.RegistryUnavailable
 				cfg.State["mirror_check_error"] = i18n.T("no_registry_available")
 			} else {
 				cfg.Registry = ""
@@ -380,7 +380,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Message: func(cfg *config.Config) *MessageContent {
 			// 检测完成后若两者都不可用，在信息区提示
-			if cfg.Registry == "unavailable" {
+			if cfg.Registry == types.RegistryUnavailable {
 				return &MessageContent{Type: MessageTypeWarning, Content: i18n.T("no_registry_available")}
 			}
 			return nil

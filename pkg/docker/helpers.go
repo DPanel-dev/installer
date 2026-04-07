@@ -6,7 +6,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	dockerclient "github.com/moby/moby/client"
 )
+
+// DefaultDockerSockPath 默认 Docker socket 路径
+var DefaultDockerSockPath = strings.TrimPrefix(dockerclient.DefaultDockerHost, "unix://")
 
 func NormalizeHost(host string) string {
 	if host == "" {
