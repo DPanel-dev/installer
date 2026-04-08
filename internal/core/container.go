@@ -44,7 +44,7 @@ func (e *Engine) backupContainer() error {
 		return err
 	}
 
-	slog.Info("Upgrade Backup", "source", e.Config.ContainerName, "backup", backupName)
+	slog.Info("Upgrade", "backup", backupName)
 	return nil
 }
 
@@ -58,7 +58,7 @@ func (e *Engine) installContainer() error {
 
 	cli := e.Config.Client.Client
 
-	slog.Info("Install Pull", "image", e.Config.GetImageName())
+	slog.Info("Install", "pull", e.Config.GetImageName())
 	if err := e.pullImage(ctx, cli, e.Config.GetImageName()); err != nil {
 		return err
 	}
@@ -68,13 +68,13 @@ func (e *Engine) installContainer() error {
 		return err
 	}
 	if containerID != "" {
-		slog.Info("Install Remove", "name", e.Config.ContainerName)
+		slog.Info("Install", "remove", e.Config.ContainerName)
 		if _, err := cli.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return err
 		}
 	}
 
-	slog.Info("Install Create", "name", e.Config.ContainerName, "port", e.Config.ServerPort)
+	slog.Info("Install", "create", e.Config.ContainerName, "port", e.Config.ServerPort)
 	createOpts, err := e.containerCreateOptions()
 	if err != nil {
 		return err
@@ -94,7 +94,7 @@ func (e *Engine) installContainer() error {
 		return err
 	}
 
-	slog.Info("Install Started", "id", created.ID[:12])
+	slog.Info("Install", "started", created.ID[:12])
 	return nil
 }
 
@@ -109,14 +109,14 @@ func (e *Engine) uninstallContainer() error {
 		return err
 	}
 	if containerID != "" {
-		slog.Info("Uninstall Remove", "name", e.Config.ContainerName)
+		slog.Info("Uninstall", "remove", e.Config.ContainerName)
 		if _, err := cli.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return err
 		}
 	}
 
 	if e.Config.UninstallRemoveData && e.Config.DataPath != "" {
-		slog.Info("Uninstall RemoveData", "path", e.Config.DataPath)
+		slog.Info("Uninstall", "remove_data", e.Config.DataPath)
 		if err := os.RemoveAll(e.Config.DataPath); err != nil {
 			return fmt.Errorf("remove data path failed: %w", err)
 		}
@@ -157,7 +157,7 @@ func (e *Engine) exportContainerEnv(containerID string) error {
 		return err
 	}
 
-	slog.Info("Upgrade Export", "path", envPath)
+	slog.Info("Upgrade", "export", envPath)
 	return nil
 }
 
@@ -232,10 +232,6 @@ func (e *Engine) containerCreateOptions() (dockerclient.ContainerCreateOptions, 
 	envPath := e.envPath()
 	if envMap, err := ReadEnv(envPath); err == nil {
 		for k, v := range envMap {
-			// 跳过安装器管理的 key（已由 Config 显式设置）
-			if k == "PID" {
-				continue
-			}
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}

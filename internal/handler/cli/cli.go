@@ -94,7 +94,7 @@ func (c *CLI) buildRootCmd() *cobra.Command {
 	}
 
 	// 全局 flags
-	rootCmd.PersistentFlags().StringVar(&c.flagProgress, "progress", ProgressAuto, "Progress output mode: auto, tty, plain, quiet")
+	rootCmd.PersistentFlags().StringVar(&c.flagProgress, "progress", ProgressPlain, "Progress output mode: plain, quiet")
 	rootCmd.PersistentFlags().BoolVarP(&c.flagYes, "yes", "y", false, "Auto-confirm prompts")
 
 	// 子命令
@@ -201,10 +201,37 @@ func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
 		}
 	}
 
+	// 二进制安装且用户未指定 base-image：根据 OS 自动修正
+	if cfg.InstallType == types.InstallTypeBinary && !cmd.Flags().Changed("base-image") {
+		switch cfg.OS {
+		case "darwin":
+			cfg.BaseImage = types.BaseImageDarwin
+		case "windows":
+			cfg.BaseImage = types.BaseImageWindows
+		default:
+			if config.IsMusl() {
+				cfg.BaseImage = types.BaseImageAlpine
+			} else {
+				cfg.BaseImage = types.BaseImageDebian
+			}
+		}
+	}
+
+	engine := core.NewEngine(cfg)
+
+	// 设置进度回调
+	if c.flagProgress != ProgressQuiet {
+		engine.ProgressFunc = ShowProgress
+		engine.ProgressDone = FinishProgress
+	}
+
+	// 先显示配置信息
+	engine.LogConfig()
+
 	// 安装时检测是否已存在 → 自动转为升级
 	if cfg.Action == types.ActionInstall {
 		if _, err := os.Stat(cfg.BinaryPath); err == nil {
-			slog.Info("Already installed")
+			slog.Warn("Already installed")
 			cfg.Action = types.ActionUpgrade
 		}
 	}
@@ -229,7 +256,6 @@ func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
 		}
 	}
 
-	engine := core.NewEngine(cfg)
 	if err := engine.Run(); err != nil {
 		return err
 	}
@@ -246,14 +272,14 @@ func (c *CLI) printAccessURL(cfg *config.Config) {
 	}
 
 	port := cfg.ServerPort
-	slog.Info("Install Done", "local", fmt.Sprintf("http://127.0.0.1:%d", port))
+	slog.Info("Done", "local", fmt.Sprintf("http://127.0.0.1:%d", port))
 
 	if cfg.ServerHost != types.ServerHostLocal {
 		if localIP := config.GetLocalIP(); localIP != "127.0.0.1" {
-			slog.Info("Install Done", "internal", fmt.Sprintf("http://%s:%d", localIP, port))
+			slog.Info("Done", "internal", fmt.Sprintf("http://%s:%d", localIP, port))
 		}
 		if publicIP := config.GetPublicIP(); publicIP != "" {
-			slog.Info("Install Done", "external", fmt.Sprintf("http://%s:%d", publicIP, port))
+			slog.Info("Done", "external", fmt.Sprintf("http://%s:%d", publicIP, port))
 		}
 	}
 }

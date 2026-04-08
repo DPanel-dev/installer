@@ -10,7 +10,9 @@ import (
 
 // Engine handles installer execution.
 type Engine struct {
-	Config *config.Config
+	Config        *config.Config
+	ProgressFunc  func(complete, total int64) // 拉取进度回调
+	ProgressDone  func()                     // 拉取完成回调
 }
 
 // NewEngine creates a new installation engine.
@@ -32,8 +34,6 @@ func (e *Engine) Run() error {
 			// Linux: 保持用户选择的 alpine 或 debian
 		}
 	}
-
-	e.logRuntimeConfig()
 
 	switch e.Config.Action {
 	case types.ActionInstall:
@@ -67,18 +67,20 @@ func (e *Engine) Run() error {
 	return fmt.Errorf("unsupported action/install type: %s/%s", e.Config.Action, e.Config.InstallType)
 }
 
-func (e *Engine) logRuntimeConfig() {
+// LogConfig 输出运行时配置信息
+func (e *Engine) LogConfig() {
 	cfg := e.Config
-	slog.Info("Config System", "os", cfg.OS, "arch", cfg.Arch)
-	slog.Info("Config Version", "version", cfg.Version, "edition", cfg.Edition, "base_image", cfg.BaseImage)
-	slog.Info("Config Paths", "binary", cfg.BinaryPath, "data", cfg.DataPath)
-	if cfg.InstallType == types.InstallTypeContainer {
-		slog.Info("Config Container", "name", cfg.ContainerName, "port", cfg.ServerPort, "registry", cfg.Registry)
+	dockerStatus := "not available"
+	if cfg.Client != nil {
+		dockerStatus = "available"
 	}
+	slog.Info("Config", "os", cfg.OS, "arch", cfg.Arch, "docker", dockerStatus)
+	slog.Info("Config", "type", cfg.InstallType, "version", cfg.Version, "edition", cfg.Edition, "base_image", cfg.BaseImage, "registry", cfg.Registry)
+	slog.Info("Config", "name", cfg.ContainerName, "port", cfg.ServerPort, "binary", cfg.BinaryPath, "data", cfg.DataPath)
 	if cfg.DNS != "" {
-		slog.Info("Config Network", "dns", cfg.DNS)
+		slog.Info("Config", "dns", cfg.DNS)
 	}
 	if cfg.HTTPProxy != "" {
-		slog.Info("Config Network", "proxy", cfg.HTTPProxy)
+		slog.Info("Config", "proxy", cfg.HTTPProxy)
 	}
 }

@@ -8,22 +8,17 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"golang.org/x/term"
 )
 
 // ========== Progress mode constants ==========
 
 const (
-	ProgressAuto  = "auto"  // auto-detect TTY
-	ProgressTTY   = "tty"   // TTY-style (overwrite lines)
-	ProgressPlain = "plain" // standard line-by-line
+	ProgressPlain = "plain" // 标准文本输出 (default)
 	ProgressQuiet = "quiet" // no console output
 )
 
 // ========== Multi-handler for slog ==========
 
-// multiHandler 将日志记录扇出到多个 slog.Handler
 type multiHandler struct {
 	handlers []slog.Handler
 }
@@ -64,127 +59,97 @@ func (h *multiHandler) WithGroup(name string) slog.Handler {
 	return &multiHandler{handlers: handlers}
 }
 
-// ========== TTY console handler ==========
+// ========== Console handler (slog text + 本地时间) ==========
 
-// ttyHandler 在终端中原地刷新同一行输出
-type ttyHandler struct {
-	w       io.Writer
-	opts    *slog.HandlerOptions
-	lastLen int
+type consoleHandler struct {
+	w    io.Writer
+	opts *slog.HandlerOptions
 }
 
-func newTTYHandler(w io.Writer, opts *slog.HandlerOptions) *ttyHandler {
+func newConsoleHandler(w io.Writer, opts *slog.HandlerOptions) *consoleHandler {
 	if opts == nil {
 		opts = &slog.HandlerOptions{}
 	}
-	return &ttyHandler{w: w, opts: opts}
+	return &consoleHandler{w: w, opts: opts}
 }
 
-func (h *ttyHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *consoleHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.opts.Level.Level()
 }
 
-func (h *ttyHandler) Handle(_ context.Context, r slog.Record) error {
-	// 构建日志行（不含换行）
+func (h *consoleHandler) Handle(_ context.Context, r slog.Record) error {
+	ts := time.Now().Format("15:04:05")
+	level := strings.TrimSpace(r.Level.String())
+
 	var attrs strings.Builder
 	r.Attrs(func(a slog.Attr) bool {
-		attrs.WriteString(fmt.Sprintf(" %s=%s", a.Key, a.Value.String()))
+		if attrs.Len() > 0 {
+			attrs.WriteString(" ")
+		}
+		attrs.WriteString(fmt.Sprintf("%s=%s", a.Key, a.Value))
 		return true
 	})
 
-	icon := levelIcon(r.Level)
-	line := fmt.Sprintf("%s %s%s", icon, r.Message, attrs.String())
-
-	// 清除上一行并写入新内容
-	if h.lastLen > 0 {
-		fmt.Fprintf(h.w, "\r%s\r%s", strings.Repeat(" ", h.lastLen), line)
+	if attrs.Len() > 0 {
+		fmt.Fprintf(h.w, "%s %s %s %s\n", ts, level, r.Message, attrs.String())
 	} else {
-		fmt.Fprintf(h.w, "\r%s", line)
+		fmt.Fprintf(h.w, "%s %s %s\n", ts, level, r.Message)
 	}
-	h.lastLen = len(line)
-
-	// Error/Warn 固定换行，Info 原地刷新
-	if r.Level >= slog.LevelWarn {
-		fmt.Fprintln(h.w)
-		h.lastLen = 0
-	}
-
 	return nil
 }
 
-// Finalize 刷新最后一行（换行固定）
-func (h *ttyHandler) Finalize() {
-	if h.lastLen > 0 {
-		fmt.Fprintln(h.w)
-		h.lastLen = 0
-	}
-}
-
-func (h *ttyHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return h // 简化实现
-}
-
-func (h *ttyHandler) WithGroup(name string) slog.Handler {
+func (h *consoleHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h
 }
 
-func levelIcon(level slog.Level) string {
-	switch {
-	case level >= slog.LevelError:
-		return "✗"
-	case level >= slog.LevelWarn:
-		return "⚠"
-	default:
-		return time.Now().Format("15:04:05")
-	}
+func (h *consoleHandler) WithGroup(name string) slog.Handler {
+	return h
 }
 
 // ========== setupConsoleLogger ==========
 
-// setupConsoleLogger 根据 progress 模式设置控制台日志
 func setupConsoleLogger(progress string) {
 	fileHandler := slog.Default().Handler()
 
-	// quiet 模式：只保留文件日志
 	if progress == ProgressQuiet {
 		return
 	}
 
-	// 确定实际模式
-	mode := progress
-	if mode == ProgressAuto {
-		if term.IsTerminal(int(os.Stdout.Fd())) {
-			mode = ProgressTTY
-		} else {
-			mode = ProgressPlain
-		}
-	}
-
-	var consoleHandler slog.Handler
-	switch mode {
-	case ProgressTTY:
-		consoleHandler = newTTYHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		})
-	default: // plain
-		consoleHandler = slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelInfo,
-		})
-	}
-
+	consoleHandler := newConsoleHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	})
 	slog.SetDefault(slog.New(&multiHandler{
 		handlers: []slog.Handler{fileHandler, consoleHandler},
 	}))
 }
 
-// finalizeTTYLogger 刷新 TTY handler 最后一行
-func finalizeTTYLogger() {
-	h := slog.Default().Handler()
-	if m, ok := h.(*multiHandler); ok {
-		for _, hh := range m.handlers {
-			if tty, ok := hh.(*ttyHandler); ok {
-				tty.Finalize()
-			}
-		}
+// ========== Progress ==========
+
+// ShowProgress 在终端原地刷新显示下载进度
+func ShowProgress(complete, total int64) {
+	if complete <= 0 {
+		return
 	}
+	// 用足够宽度覆盖残留字符
+	fmt.Fprintf(os.Stdout, "\r%s INFO Pull %-15s",
+		time.Now().Format("15:04:05"),
+		formatBytes(complete),
+	)
+}
+
+// FinishProgress 固定进度行（换行）
+func FinishProgress() {
+	fmt.Fprintln(os.Stdout)
+}
+
+func formatBytes(b int64) string {
+	const mb = 1024 * 1024
+	if b >= mb {
+		return fmt.Sprintf("%.1fMB", float64(b)/float64(mb))
+	}
+	const kb = 1024
+	if b >= kb {
+		return fmt.Sprintf("%.1fKB", float64(b)/float64(kb))
+	}
+	return fmt.Sprintf("%dB", b)
 }

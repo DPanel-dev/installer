@@ -11,6 +11,7 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -54,6 +55,22 @@ func (e *Engine) downloadPath() string {
 	return filepath.Join(filepath.Dir(execPath), "download")
 }
 
+// progressReader 包装 io.Reader，追踪读取进度
+type progressReader struct {
+	r    io.Reader
+	read int64
+	fn   func(complete, total int64)
+}
+
+func (pr *progressReader) Read(p []byte) (int, error) {
+	n, err := pr.r.Read(p)
+	pr.read += int64(n)
+	if pr.fn != nil {
+		pr.fn(pr.read, 0) // total=0 表示未知
+	}
+	return n, err
+}
+
 // pullFiles 从 OCI 镜像提取文件到临时目录
 func (e *Engine) pullFiles(targets []extractTarget) error {
 	// 准备临时目录
@@ -83,6 +100,12 @@ func (e *Engine) pullFiles(targets []extractTarget) error {
 	fs := mutate.Extract(img)
 	defer fs.Close()
 
+	// 包装 reader 追踪提取进度
+	var pfs io.Reader = fs
+	if e.ProgressFunc != nil {
+		pfs = &progressReader{r: fs, fn: e.ProgressFunc}
+	}
+
 	targetMap := make(map[string]*extractTarget, len(targets))
 	for i := range targets {
 		targetMap[pathpkg.Clean("/"+targets[i].ImagePath)] = &targets[i]
@@ -90,7 +113,7 @@ func (e *Engine) pullFiles(targets []extractTarget) error {
 
 	extracted := make(map[string]bool, len(targets))
 
-	reader := tar.NewReader(fs)
+	reader := tar.NewReader(pfs)
 	for {
 		header, err := reader.Next()
 		if err != nil {
@@ -134,6 +157,11 @@ func (e *Engine) pullFiles(targets []extractTarget) error {
 		}
 	}
 
+	// 进度完成，固定最后一行
+	if e.ProgressDone != nil {
+		e.ProgressDone()
+	}
+
 	return nil
 }
 
@@ -150,14 +178,14 @@ func (e *Engine) installBinary() error {
 	}
 
 	// 下载到临时目录
-	slog.Info("Install Pull", "image", e.Config.GetImageName())
+	slog.Info("Install", "pull", e.Config.GetImageName())
 	if err := e.pullFiles(defaultExtractTargets); err != nil {
 		return err
 	}
 
 	// 从临时目录复制到安装目录
 	tempDir := e.downloadPath()
-	slog.Info("Install Copy", "path", installDir)
+	slog.Info("Install", "copy", installDir)
 	if err := copyFile(filepath.Join(tempDir, "dpanel"), e.Config.BinaryPath, 0755); err != nil {
 		return fmt.Errorf("copy binary failed: %w", err)
 	}
@@ -187,7 +215,7 @@ func (e *Engine) upgradeBinary() error {
 	installDir := filepath.Dir(e.Config.BinaryPath)
 
 	// 先拉取（服务仍在运行，不受影响）
-	slog.Info("Upgrade Pull", "image", e.Config.GetImageName())
+	slog.Info("Upgrade", "pull", e.Config.GetImageName())
 	if err := e.pullFiles(defaultExtractTargets); err != nil {
 		return err
 	}
@@ -206,7 +234,7 @@ func (e *Engine) upgradeBinary() error {
 	}
 	defer binFile.Close()
 
-	slog.Info("Upgrade Apply", "path", e.Config.BinaryPath)
+	slog.Info("Upgrade", "apply", e.Config.BinaryPath)
 	if err := update.Apply(binFile, update.Options{TargetPath: e.Config.BinaryPath}); err != nil {
 		return fmt.Errorf("apply binary update failed: %w", err)
 	}
@@ -239,7 +267,7 @@ func (e *Engine) uninstallBinary() error {
 	}
 
 	installPath := e.Config.BinaryPath
-	slog.Info("Uninstall Remove", "path", installPath)
+	slog.Info("Uninstall", "remove", installPath)
 	if err := os.Remove(installPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove binary failed: %w", err)
 	}
@@ -248,7 +276,7 @@ func (e *Engine) uninstallBinary() error {
 	_ = os.Remove(e.envPath())
 
 	if e.Config.UninstallRemoveData && e.Config.DataPath != "" {
-		slog.Info("Uninstall RemoveData", "path", e.Config.DataPath)
+		slog.Info("Uninstall", "remove_data", e.Config.DataPath)
 		if err := os.RemoveAll(e.Config.DataPath); err != nil {
 			return fmt.Errorf("remove data path failed: %w", err)
 		}
@@ -328,7 +356,7 @@ func (e *Engine) processStart() error {
 	}
 	cmd.Env = cmdEnv
 
-	slog.Info("Install Start", "path", installPath)
+	slog.Info("Install", "start", installPath)
 
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start process failed: %w", err)
@@ -340,7 +368,7 @@ func (e *Engine) processStart() error {
 		return fmt.Errorf("process exited immediately")
 	}
 
-	slog.Info("Install Started")
+	slog.Info("Started", "pid", cmd.Process.Pid)
 	return nil
 }
 
@@ -353,11 +381,13 @@ func findProcessesByPath(binaryPath string) ([]*process.Process, error) {
 	}
 	var matched []*process.Process
 	for _, p := range all {
-		exe, err := p.Exe()
-		if err != nil {
+		// 优先用 Exe 匹配
+		if exe, err := p.Exe(); err == nil && exe == absPath {
+			matched = append(matched, p)
 			continue
 		}
-		if exe == absPath {
+		// 兜底：用 Cmdline 匹配
+		if cmdline, err := p.Cmdline(); err == nil && strings.HasPrefix(cmdline, absPath+" ") {
 			matched = append(matched, p)
 		}
 	}
@@ -367,20 +397,25 @@ func findProcessesByPath(binaryPath string) ([]*process.Process, error) {
 func (e *Engine) processStop() error {
 	procs, err := findProcessesByPath(e.Config.BinaryPath)
 	if err != nil || len(procs) == 0 {
+		slog.Info("Stop", "status", "not running")
 		return nil
 	}
 
+	var pidStrs []string
 	for _, p := range procs {
-		pid := int(p.Pid)
-		slog.Info("Upgrade Stop", "pid", pid)
+		pidStrs = append(pidStrs, strconv.Itoa(int(p.Pid)))
+	}
+	slog.Info("Stop", "pid", strings.Join(pidStrs, ","))
+
+	for _, p := range procs {
 		p.SendSignal(syscall.SIGTERM)
 	}
 
 	// 等待进程退出（最多 10 秒）
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
-		procs, err = findProcessesByPath(e.Config.BinaryPath)
-		if err != nil || len(procs) == 0 {
+		procs, _ = findProcessesByPath(e.Config.BinaryPath)
+		if len(procs) == 0 {
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -388,8 +423,7 @@ func (e *Engine) processStop() error {
 
 	// 超时后 SIGKILL
 	for _, p := range procs {
-		pid := int(p.Pid)
-		slog.Warn("Upgrade Stop", "pid", pid, "action", "SIGKILL")
+		slog.Warn("Stop", "kill", int(p.Pid))
 		p.SendSignal(syscall.SIGKILL)
 	}
 
