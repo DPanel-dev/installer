@@ -18,12 +18,11 @@ var (
 )
 
 func main() {
-	// Setup logging
+	// Setup logging (file only)
 	setupLogger()
 
 	// Run the installer
 	if err := run(); err != nil {
-		slog.Error("Installation failed", "error", err)
 		os.Exit(1)
 	}
 }
@@ -32,37 +31,28 @@ func main() {
 func run() error {
 	args := os.Args[1:]
 
-	// Create default Config
-	cfg, err := config.NewConfig()
-	if err != nil {
-		slog.Error("Failed to create config", "error", err)
-		return err
-	}
-	slog.Debug("Starting installer", "config", cfg, "args", args)
-
 	// 无参数 → TUI，有参数 → CLI
-	var handlerErr error
 	if len(args) == 0 {
-		slog.Debug("Starting installer", "mode", "tui")
-		handlerErr = tui.NewTUI().Run(cfg)
-	} else {
-		slog.Debug("Starting installer", "mode", "cli")
-		handlerErr = cli.NewCLI(
-			cli.WithArgs(args),
-			cli.WithVersionInfo(version, commit, date),
-		).Run(cfg)
+		cfg, err := config.NewConfig()
+		if err != nil {
+			slog.Error("Failed to create config", "error", err)
+			return err
+		}
+		slog.Debug("Starting installer", "mode", "tui", "config", cfg)
+		return tui.NewTUI().Run(cfg)
 	}
 
-	if handlerErr != nil {
-		return handlerErr
-	}
-
-	return nil
+	// CLI 模式：cobra 负责解析参数和管理 config
+	slog.Debug("Starting installer", "mode", "cli", "args", args)
+	return cli.NewCLI(
+		cli.WithArgs(args),
+		cli.WithVersionInfo(version, commit, date),
+	).Run(nil)
 }
 
-// setupLogger 设置日志记录器
+// setupLogger 设置日志记录器（仅文件输出）
+// CLI handler 内部自行决定是否增加控制台输出
 func setupLogger() {
-	// Get executable directory
 	execPath, err := os.Executable()
 	if err != nil {
 		execPath = os.Args[0]
@@ -70,15 +60,12 @@ func setupLogger() {
 	execDir := filepath.Dir(execPath)
 	logPath := filepath.Join(execDir, "run.log")
 
-	// Create log file
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		slog.Error("Failed to open log file", "path", logPath, "error", err)
 		return
 	}
 
-	// Setup slog with JSON file output
-	//io.MultiWriter(os.Stdout, logFile)
 	fileHandler := slog.NewJSONHandler(logFile, &slog.HandlerOptions{
 		Level: slog.LevelDebug,
 	})

@@ -1,50 +1,17 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 )
 
-// buildFlagDefMap builds a fast lookup map for command flag definitions.
-func buildFlagDefMap(cmd *CommandDefinition) map[string]FlagDefinition {
-	flagDefs := make(map[string]FlagDefinition, len(cmd.Flags))
-	for _, f := range cmd.Flags {
-		flagDefs[f.Name] = f
-	}
-	return flagDefs
-}
-
-// isFlagToken reports whether the token starts with "--".
-func isFlagToken(s string) bool {
-	return strings.HasPrefix(s, "--")
-}
-
-// parseLongFlag parses "--name value" or "--name=value" format.
-func parseLongFlag(arg string) (name, value string) {
-	arg = strings.TrimPrefix(arg, "--")
-	if idx := strings.Index(arg, "="); idx >= 0 {
-		return arg[:idx], arg[idx+1:]
-	}
-	return arg, ""
-}
-
-// normalizeBoolFlag normalizes bool-like values to "true"/"false".
-func normalizeBoolFlag(raw string) (string, error) {
-	parsed, ok := parseBool(raw)
-	if !ok {
-		return "", fmt.Errorf("must be one of: true, false, 1, 0, yes, no")
-	}
-	if parsed {
-		return "true", nil
-	}
-	return "false", nil
-}
-
-// joinCommandNames returns a comma-separated command list.
-func joinCommandNames(commands []CommandDefinition) string {
-	names := make([]string, 0, len(commands))
-	for _, cmd := range commands {
-		names = append(names, cmd.Name)
-	}
-	return strings.Join(names, ", ")
+// parseYes 在终端显示确认提示，返回用户是否确认
+func parseYes(msg string) bool {
+	fmt.Printf("%s [y/N]: ", msg)
+	reader := bufio.NewReader(os.Stdin)
+	response, _ := reader.ReadString('\n')
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "y" || response == "yes"
 }

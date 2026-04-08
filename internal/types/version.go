@@ -24,3 +24,9 @@ const (
 	BaseImageDarwin  = "darwin"
 	BaseImageWindows = "windows"
 )
+
+// === 服务绑定地址 ===
+const (
+	ServerHostAll   = "0.0.0.0"
+	ServerHostLocal = "127.0.0.1"
+)

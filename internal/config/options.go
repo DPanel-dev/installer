@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/dpanel-dev/installer/internal/types"
@@ -82,10 +83,18 @@ func WithContainerName(name string) Option {
 	}
 }
 
-// WithPort 设置端口
-func WithPort(port int) Option {
+// WithServerHost 设置服务绑定地址
+func WithServerHost(host string) Option {
 	return func(c *Config) error {
-		c.Port = port
+		c.ServerHost = host
+		return nil
+	}
+}
+
+// WithServerPort 设置服务端口
+func WithServerPort(port int) Option {
+	return func(c *Config) error {
+		c.ServerPort = port
 		return nil
 	}
 }
@@ -163,6 +172,24 @@ func WithUninstallRemoveData(remove bool) Option {
 }
 
 // === 二进制配置 Options ===
+
+// WithInstallPath 设置安装目录（自动推算 BinaryPath 和 DataPath）
+// BinaryPath = installPath + "/dpanel"，DataPath = installPath + "/data"
+// 后续 WithDataPath 可单独覆盖 DataPath
+func WithInstallPath(path string) Option {
+	return func(c *Config) error {
+		if path == "" {
+			return fmt.Errorf("install path cannot be empty")
+		}
+		binaryPath := filepath.Join(path, "dpanel")
+		if c.OS == types.BaseImageWindows && !strings.HasSuffix(strings.ToLower(binaryPath), ".exe") {
+			binaryPath += ".exe"
+		}
+		c.BinaryPath = binaryPath
+		c.DataPath = filepath.Join(path, "data")
+		return nil
+	}
+}
 
 // WithBinaryPath 设置二进制安装路径（Windows 自动补 .exe 后缀）
 func WithBinaryPath(path string) Option {

@@ -447,7 +447,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
 				{
-					Value:       strconv.Itoa(cfg.Port),
+					Value:       strconv.Itoa(cfg.ServerPort),
 					Label:       "",
 					Description: "access_port_hint",
 				},
@@ -456,7 +456,7 @@ var StepDefinitions = map[Step]StepDefinition{
 		Finish: func(cfg *config.Config, value string) error {
 			if value != "" {
 				if port, err := strconv.Atoi(value); err == nil {
-					cfg.Port = port
+					cfg.ServerPort = port
 				}
 			}
 			return nil

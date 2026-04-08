@@ -16,6 +16,8 @@ type Config struct {
 	Arch string
 
 	// === 操作类型 ===
+
+	// === 操作类型 ===
 	Action string // install, upgrade, uninstall
 
 	// === 语言 ===
@@ -32,7 +34,8 @@ type Config struct {
 
 	// === 容器配置 ===
 	ContainerName string
-	Port          int // 0 = 随机端口
+	ServerHost    string // 绑定地址：0.0.0.0 或 127.0.0.1
+	ServerPort    int    // 0 = 随机端口
 	DataPath      string
 
 	// === 二进制配置 ===
@@ -84,22 +87,30 @@ func NewConfig(opts ...Option) (*Config, error) {
 	// 3. 根据环境 append
 	if c.Client != nil {
 		defaults = append(defaults, WithInstallType(types.InstallTypeContainer))
+		// 容器安装：默认 Alpine，用户可在 TUI StepBaseImage 或 CLI --base-image 中选择
+		defaults = append(defaults, WithBaseImage(types.BaseImageAlpine))
 	} else {
 		defaults = append(defaults, WithInstallType(types.InstallTypeBinary))
-		if IsMusl() {
-			defaults = append(defaults, WithBaseImage(types.BaseImageAlpine))
-		} else {
-			defaults = append(defaults, WithBaseImage(types.BaseImageDebian))
+		// 二进制安装：按 OS 设置平台镜像
+		switch c.OS {
+		case "darwin":
+			defaults = append(defaults, WithBaseImage(types.BaseImageDarwin))
+		case "windows":
+			defaults = append(defaults, WithBaseImage(types.BaseImageWindows))
+		default:
+			if IsMusl() {
+				defaults = append(defaults, WithBaseImage(types.BaseImageAlpine))
+			} else {
+				defaults = append(defaults, WithBaseImage(types.BaseImageDebian))
+			}
 		}
 	}
 
-	defaults = append(defaults, WithPort(FindAvailablePort(8080)))
+	defaults = append(defaults, WithServerHost(types.ServerHostAll))
+	defaults = append(defaults, WithServerPort(FindAvailablePort(8080)))
 
 	homeDir, _ := os.UserHomeDir()
-	defaults = append(defaults,
-		WithDataPath(filepath.Join(homeDir, "dpanel", "data")),
-		WithBinaryPath(filepath.Join(homeDir, "dpanel", "dpanel")),
-	)
+	defaults = append(defaults, WithInstallPath(filepath.Join(homeDir, "dpanel")))
 
 	// 4. 先应用默认值，再应用用户覆盖
 	for _, opt := range append(defaults, opts...) {

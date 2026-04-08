@@ -2,12 +2,15 @@ package cli
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
+	"log/slog"
+	"os"
+
+	"github.com/spf13/cobra"
 
 	"github.com/dpanel-dev/installer/internal/config"
 	"github.com/dpanel-dev/installer/internal/core"
 	"github.com/dpanel-dev/installer/internal/handler"
+	"github.com/dpanel-dev/installer/internal/types"
 )
 
 // CLI 实现 handler.Handler 接口
@@ -16,6 +19,27 @@ type CLI struct {
 	version string
 	commit  string
 	date    string
+
+	// 全局 flags
+	flagProgress string
+	flagYes      bool
+
+	// 子命令 flags（通过 cobra 绑定）
+	flagType        string
+	flagVersion     string
+	flagEdition     string
+	flagBaseImage   string
+	flagRegistry    string
+	flagName        string
+	flagServerHost  string
+	flagServerPort  int
+	flagInstallPath string
+	flagDataPath    string
+	flagDockerSock  string
+	flagProxy       string
+	flagDNS         string
+	flagBackup      bool
+	flagRemoveData  bool
 }
 
 // Option 配置选项函数
@@ -56,246 +80,244 @@ func (c *CLI) Name() string {
 }
 
 // Run 实现 handler.Handler 接口
+// cfg 参数由 TUI 使用，CLI 模式忽略（cobra 内部自行创建 config）
 func (c *CLI) Run(cfg *config.Config) error {
-	return c.run(cfg)
+	return c.Parse()
 }
 
-// run 运行 CLI 模式
-func (c *CLI) run(cfg *config.Config) error {
-	args := c.args
-
-	// 1. 处理全局 flags (--help, --version)
-	if len(args) == 1 {
-		switch args[0] {
-		case "--help", "-h":
-			c.showRootHelp()
-			return nil
-		case "--version", "-v":
-			c.showVersion()
-			return nil
-		}
+// buildRootCmd 构建根命令
+func (c *CLI) buildRootCmd() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:     "dpanel-installer",
+		Short:   "Install, upgrade, and manage DPanel",
+		Version: fmt.Sprintf("%s (commit: %s, date: %s)", c.version, c.commit, c.date),
 	}
 
-	// 2. 无子命令时显示帮助
-	if len(args) == 0 {
-		c.showRootHelp()
-		return nil
+	// 全局 flags
+	rootCmd.PersistentFlags().StringVar(&c.flagProgress, "progress", ProgressAuto, "Progress output mode: auto, tty, plain, quiet")
+	rootCmd.PersistentFlags().BoolVarP(&c.flagYes, "yes", "y", false, "Auto-confirm prompts")
+
+	// 子命令
+	rootCmd.AddCommand(c.buildInstallCmd())
+	rootCmd.AddCommand(c.buildUpgradeCmd())
+	rootCmd.AddCommand(c.buildUninstallCmd())
+
+	// 无子命令时显示帮助
+	rootCmd.SetArgs(c.args)
+	rootCmd.SetHelpCommand(&cobra.Command{Hidden: true}) // 隐藏默认 help 子命令
+
+	return rootCmd
+}
+
+// addCommonFlags 添加通用 flags（install/upgrade 共享）
+func (c *CLI) addCommonFlags(cmd *cobra.Command) {
+	cmd.Flags().StringVar(&c.flagType, "type", "", "Install type: container or binary")
+	cmd.Flags().StringVar(&c.flagVersion, "version", "", "DPanel version: ce (community), pe (pro), be (dev)")
+	cmd.Flags().StringVar(&c.flagEdition, "edition", "", "Edition: standard or lite (standard only for container install)")
+	cmd.Flags().StringVar(&c.flagServerHost, "server-host", "", "Server bind host (default: 0.0.0.0)")
+	cmd.Flags().IntVar(&c.flagServerPort, "server-port", 0, "Server port (0 for random)")
+	cmd.Flags().StringVar(&c.flagInstallPath, "install-path", "", "Installation directory (auto-derives binary and data paths)")
+	cmd.Flags().StringVar(&c.flagDataPath, "data-path", "", "Data storage path (overrides auto-derived path from --install-path)")
+	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
+}
+
+// buildInstallCmd 构建 install 子命令
+func (c *CLI) buildInstallCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "install",
+		Short: "Install DPanel",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.applyAndRun(cmd, types.ActionInstall)
+		},
 	}
 
-	// 3. 查找子命令
-	cmdName := args[0]
-	cmd := GetCommand(cmdName)
-	if cmd == nil {
-		return fmt.Errorf("unknown command: %s (available: %s)", cmdName, joinCommandNames(Commands))
+	c.addCommonFlags(cmd)
+	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
+	cmd.Flags().StringVar(&c.flagRegistry, "registry", "", "Image registry (e.g., registry.cn-hangzhou.aliyuncs.com)")
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
+	cmd.Flags().StringVar(&c.flagProxy, "proxy", "", "Proxy address (used for both HTTP and HTTPS)")
+	cmd.Flags().StringVar(&c.flagDNS, "dns", "", "DNS server address")
+
+	return cmd
+}
+
+// buildUpgradeCmd 构建 upgrade 子命令
+func (c *CLI) buildUpgradeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade existing DPanel installation",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.applyAndRun(cmd, types.ActionUpgrade)
+		},
 	}
 
-	// 4. 解析子命令 flags
-	opts, err := c.parseCommandFlags(cmd, args[1:])
+	c.addCommonFlags(cmd)
+	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
+	cmd.Flags().StringVar(&c.flagRegistry, "registry", "", "Image registry (e.g., registry.cn-hangzhou.aliyuncs.com)")
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
+	cmd.Flags().BoolVar(&c.flagBackup, "backup", true, "Create backup before upgrade")
+
+	return cmd
+}
+
+// buildUninstallCmd 构建 uninstall 子命令
+func (c *CLI) buildUninstallCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Uninstall DPanel",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.applyAndRun(cmd, types.ActionUninstall)
+		},
+	}
+
+	cmd.Flags().StringVar(&c.flagType, "type", "", "Install type: container or binary (auto-detected if not specified)")
+	cmd.Flags().StringVar(&c.flagInstallPath, "install-path", "", "Installation directory (auto-derives binary and data paths)")
+	cmd.Flags().StringVar(&c.flagDataPath, "data-path", "", "Data storage path (overrides auto-derived path from --install-path)")
+	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
+	cmd.Flags().BoolVar(&c.flagRemoveData, "remove-data", false, "Remove data directory")
+
+	return cmd
+}
+
+// applyAndRun 应用 flags 到 config，确认提示，然后执行
+func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
+	// CLI 模式：增加控制台日志
+	setupConsoleLogger(c.flagProgress)
+
+	cfg, err := config.NewConfig()
 	if err != nil {
-		if err.Error() == "help requested" {
-			c.showCommandHelp(cmd)
-			return nil
-		}
 		return err
 	}
 
-	// 5. 设置 Action
-	cfg.Action = cmd.Action
+	// 设置 Action
+	cfg.Action = action
 
-	// 6. 应用到 Config
+	// 应用 flags 到 config（只应用用户显式设置的 flag）
+	opts := c.buildOptions(cmd)
 	for _, opt := range opts {
 		if err := opt(cfg); err != nil {
-			return fmt.Errorf("failed to apply config: %w", err)
+			return err
+		}
+	}
+
+	// 安装时检测是否已存在 → 自动转为升级
+	if cfg.Action == types.ActionInstall {
+		if _, err := os.Stat(cfg.BinaryPath); err == nil {
+			slog.Info("Already installed")
+			cfg.Action = types.ActionUpgrade
+		}
+	}
+
+	// 需要确认的操作（uninstall / upgrade），除非 -y
+	if !c.flagYes {
+		switch cfg.Action {
+		case types.ActionUninstall:
+			msg := "Uninstall DPanel?"
+			if cfg.UninstallRemoveData {
+				msg += " All data will be permanently deleted."
+			}
+			if !parseYes(msg) {
+				fmt.Println("Aborted.")
+				return nil
+			}
+		case types.ActionUpgrade:
+			if !parseYes("Upgrade with new version?") {
+				fmt.Println("Aborted.")
+				return nil
+			}
 		}
 	}
 
 	engine := core.NewEngine(cfg)
-	return engine.Run()
-}
-
-// parseCommandFlags 解析子命令的 flags
-func (c *CLI) parseCommandFlags(cmd *CommandDefinition, args []string) ([]func(*config.Config) error, error) {
-	// 解析结果存储
-	values := make(map[string]string)
-	flagDefs := buildFlagDefMap(cmd)
-
-	// 遍历 args 解析 flags
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-
-		// --help
-		if arg == "--help" || arg == "-h" {
-			return nil, fmt.Errorf("help requested")
-		}
-
-		// 解析 flag
-		if isFlagToken(arg) {
-			// 长格式: --name value 或 --name=value
-			name, value := parseLongFlag(arg)
-			def, exists := flagDefs[name]
-			if !exists {
-				return nil, fmt.Errorf("unknown flag: --%s (use \"dpanel-installer %s --help\" to view available flags)", name, cmd.Name)
-			}
-			if value == "" && i+1 < len(args) && !isFlagToken(args[i+1]) {
-				value = args[i+1]
-				i++
-			}
-			// bool flag 支持无值写法：--flag 等价于 --flag=true
-			if value == "" && def.Type == FlagTypeBool {
-				value = "true"
-			}
-			values[name] = value
-			continue
-		}
-
-		return nil, fmt.Errorf("unexpected argument: %s (flags must use --name=value or --name value)", arg)
+	if err := engine.Run(); err != nil {
+		return err
 	}
 
-	// 查找 flag 定义并应用
-	opts := []func(*config.Config) error{}
-	for _, flag := range cmd.Flags {
-		// 检查是否提供了该 flag
-		value, found := values[flag.Name]
+	// 安装/升级成功后输出访问地址
+	c.printAccessURL(cfg)
+	return nil
+}
 
-		// 如果未提供但有默认值，使用默认值
-		if !found && flag.Default != "" {
-			value = flag.Default
-			found = true
-		}
-
-		// 跳过未提供的 flag
-		if !found {
-			continue
-		}
-
-		// 验证枚举值
-		if flag.Type == FlagTypeEnum && len(flag.EnumValues) > 0 {
-			valid := false
-			for _, ev := range flag.EnumValues {
-				if ev == value {
-					valid = true
-					break
-				}
-			}
-			if !valid {
-				return nil, fmt.Errorf("invalid value '%s' for --%s, must be one of: %s",
-					value, flag.Name, strings.Join(flag.EnumValues, ", "))
-			}
-		}
-
-		// bool flag 统一标准化
-		if flag.Type == FlagTypeBool {
-			normalized, err := normalizeBoolFlag(value)
-			if err != nil {
-				return nil, fmt.Errorf("invalid bool value '%s' for --%s, %s", value, flag.Name, err.Error())
-			}
-			value = normalized
-		}
-
-		// 应用 flag
-		if flag.Apply != nil {
-			opt, err := flag.Apply(value)
-			if err != nil {
-				return nil, fmt.Errorf("--%s: %w", flag.Name, err)
-			}
-			if opt != nil {
-				opts = append(opts, func(cfg *config.Config) error {
-					return opt(cfg)
-				})
-			}
-		}
+// printAccessURL 输出安装完成后的访问地址
+func (c *CLI) printAccessURL(cfg *config.Config) {
+	if cfg.ServerPort <= 0 {
+		return
 	}
 
-	return opts, nil
-}
+	port := cfg.ServerPort
+	slog.Info("Install Done", "local", fmt.Sprintf("http://127.0.0.1:%d", port))
 
-// showRootHelp 显示根帮助
-func (c *CLI) showRootHelp() {
-	fmt.Println()
-	fmt.Println("DPanel Installer - Install, upgrade, and manage DPanel")
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  dpanel-installer [command]")
-	fmt.Println()
-	fmt.Println("Commands:")
-	for _, cmd := range Commands {
-		fmt.Printf("  %-12s  %s\n", cmd.Name, cmd.Description)
-	}
-	fmt.Println()
-	fmt.Println("Flags:")
-	fmt.Println("  --help       Show help")
-	fmt.Println("  --version    Show version")
-	fmt.Println()
-	fmt.Println("Use \"dpanel-installer [command] --help\" for more information about a command.")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  dpanel-installer install --type=container --docker-sock=/var/run/docker.sock")
-	fmt.Println("  dpanel-installer install --type=binary --port=8080 --data-path=/home/dpanel/data")
-	fmt.Println()
-}
-
-// showCommandHelp 显示子命令帮助
-func (c *CLI) showCommandHelp(cmd *CommandDefinition) {
-	fmt.Println()
-	fmt.Printf("Usage: dpanel-installer %s [flags]\n\n", cmd.Name)
-	fmt.Println(cmd.Description)
-	fmt.Println()
-	fmt.Println("Flags:")
-
-	for _, flag := range cmd.Flags {
-		// 构建 flag 字符串
-		flagStr := fmt.Sprintf("    --%s", flag.Name)
-
-		// 添加类型信息
-		var typeInfo string
-		switch flag.Type {
-		case FlagTypeEnum:
-			typeInfo = fmt.Sprintf("[%s]", strings.Join(flag.EnumValues, "|"))
-		case FlagTypeInt:
-			typeInfo = "<int>"
-		case FlagTypeBool:
-			typeInfo = ""
-		default:
-			typeInfo = "<string>"
+	if cfg.ServerHost != types.ServerHostLocal {
+		if localIP := config.GetLocalIP(); localIP != "127.0.0.1" {
+			slog.Info("Install Done", "internal", fmt.Sprintf("http://%s:%d", localIP, port))
 		}
-
-		// 添加默认值
-		var defaultInfo string
-		if flag.Default != "" {
-			defaultInfo = fmt.Sprintf(" (default: %s)", flag.Default)
+		if publicIP := config.GetPublicIP(); publicIP != "" {
+			slog.Info("Install Done", "external", fmt.Sprintf("http://%s:%d", publicIP, port))
 		}
-
-		// 格式化输出
-		fmt.Printf("  %-20s %-15s %s%s\n", flagStr, typeInfo, flag.Description, defaultInfo)
-	}
-
-	fmt.Println()
-	fmt.Println("  --help            Show help")
-	fmt.Println()
-}
-
-// showVersion 显示版本信息
-func (c *CLI) showVersion() {
-	fmt.Printf("DPanel Installer %s\n", c.version)
-	fmt.Printf("Commit: %s\n", c.commit)
-	fmt.Printf("Date: %s\n", c.date)
-}
-
-// parseBool 解析 bool 值
-func parseBool(s string) (bool, bool) {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case "true", "1", "yes":
-		return true, true
-	case "false", "0", "no":
-		return false, true
-	default:
-		return false, false
 	}
 }
 
-// parseInt 解析 int 值
-func parseInt(s string) (int, error) {
-	return strconv.Atoi(s)
+// buildOptions 从 cobra flags 构建 config.Option 列表
+func (c *CLI) buildOptions(cmd *cobra.Command) []config.Option {
+	var opts []config.Option
+
+	if cmd.Flags().Changed("type") {
+		opts = append(opts, config.WithInstallType(c.flagType))
+	}
+	if cmd.Flags().Changed("version") {
+		opts = append(opts, config.WithVersion(c.flagVersion))
+	}
+	if cmd.Flags().Changed("edition") {
+		opts = append(opts, config.WithEdition(c.flagEdition))
+	}
+	if cmd.Flags().Changed("base-image") {
+		opts = append(opts, config.WithBaseImage(c.flagBaseImage))
+	}
+	if cmd.Flags().Changed("registry") {
+		opts = append(opts, config.WithRegistry(c.flagRegistry))
+	}
+	if cmd.Flags().Changed("name") {
+		opts = append(opts, config.WithContainerName(c.flagName))
+	}
+	if cmd.Flags().Changed("server-host") {
+		opts = append(opts, config.WithServerHost(c.flagServerHost))
+	}
+	if cmd.Flags().Changed("server-port") {
+		opts = append(opts, config.WithServerPort(c.flagServerPort))
+	}
+	if cmd.Flags().Changed("install-path") {
+		opts = append(opts, config.WithInstallPath(c.flagInstallPath))
+	}
+	if cmd.Flags().Changed("data-path") {
+		opts = append(opts, config.WithDataPath(c.flagDataPath))
+	}
+	if cmd.Flags().Changed("docker-sock") {
+		opts = append(opts, config.WithContainerSock(c.flagDockerSock))
+	}
+	if cmd.Flags().Changed("proxy") {
+		opts = append(opts, config.WithHTTPProxy(c.flagProxy))
+	}
+	if cmd.Flags().Changed("dns") {
+		opts = append(opts, config.WithDNS(c.flagDNS))
+	}
+	if cmd.Flags().Changed("backup") {
+		opts = append(opts, config.WithUpgradeBackup(c.flagBackup))
+	}
+	if cmd.Flags().Changed("remove-data") {
+		opts = append(opts, config.WithUninstallRemoveData(c.flagRemoveData))
+	}
+
+	return opts
+}
+
+// Parse 执行命令解析并返回 Run 结果
+// 这是一个桥接方法，让 main.go 中的调用方式保持不变
+func (c *CLI) Parse() error {
+	rootCmd := c.buildRootCmd()
+	rootCmd.SilenceUsage = true
+	_, err := rootCmd.ExecuteC()
+	return err
 }
 
 // 确保类型实现了接口

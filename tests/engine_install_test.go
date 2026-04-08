@@ -102,7 +102,7 @@ func TestEngineContainerInstall(t *testing.T) {
 		config.WithBaseImage(types.BaseImageAlpine),
 		config.WithContainerName(containerName),
 		config.WithDataPath(filepath.Join(t.TempDir(), "data")),
-		config.WithPort(0),
+		config.WithServerPort(0),
 		config.WithClient(cli),
 	)
 	if err != nil {

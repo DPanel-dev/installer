@@ -71,6 +71,34 @@ func IsMusl() bool {
 	return false
 }
 
+// GetLocalIP 获取本机内网 IP
+func GetLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "127.0.0.1"
+	}
+	for _, addr := range addrs {
+		if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
+			return ipNet.IP.String()
+		}
+	}
+	return "127.0.0.1"
+}
+
+// GetPublicIP 获取公网 IP，获取失败返回空字符串
+func GetPublicIP() string {
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api64.ipify.org")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	buf := make([]byte, 64)
+	n, _ := resp.Body.Read(buf)
+	return strings.TrimSpace(string(buf[:n]))
+}
+
 // FindAvailablePort 查找可用端口，从 startPort 开始查找
 func FindAvailablePort(startPort int) int {
 	for port := startPort; port < 65535; port++ {

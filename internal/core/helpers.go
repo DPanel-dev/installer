@@ -2,43 +2,13 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/joho/godotenv"
 )
-
-// extractTarget 定义从 OCI 镜像提取文件的规则
-type extractTarget struct {
-	ImagePath string      // OCI 镜像内路径，如 "/app/server/dpanel"
-	Name      string      // 本地文件名，如 "dpanel"、"config.yaml"
-	Mode      os.FileMode // 文件权限，如 0755、0644
-	Action    func(tmpPath, finalPath string, mode os.FileMode) error
-}
-
-// overwriteAction 覆盖：chmod + rename -new → final
-func overwriteAction(tmpPath, finalPath string, mode os.FileMode) error {
-	if err := os.Chmod(tmpPath, mode); err != nil {
-		return err
-	}
-	return os.Rename(tmpPath, finalPath)
-}
-
-// skipIfExistsAction 跳过：不存在则 rename，存在则保留 -new
-func skipIfExistsAction(tmpPath, finalPath string, mode os.FileMode) error {
-	if err := os.Chmod(tmpPath, mode); err != nil {
-		return err
-	}
-	if _, err := os.Stat(finalPath); os.IsNotExist(err) {
-		return os.Rename(tmpPath, finalPath)
-	}
-	return nil
-}
-
-// keepNewAction 只 chmod，保留 -new 给调用方处理
-func keepNewAction(tmpPath, _ string, mode os.FileMode) error {
-	return os.Chmod(tmpPath, mode)
-}
 
 // ReadEnv 读取 .env 文件
 func ReadEnv(path string) (map[string]string, error) {
@@ -63,4 +33,26 @@ func WriteEnv(path string, env map[string]string) error {
 		return fmt.Errorf("write .env failed: %w", err)
 	}
 	return nil
+}
+
+// copyFile 复制文件，保持权限
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }

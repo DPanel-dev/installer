@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/netip"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,7 +44,7 @@ func (e *Engine) backupContainer() error {
 		return err
 	}
 
-	slog.Info("Container backup created", "source", e.Config.ContainerName, "backup", backupName)
+	slog.Info("Upgrade Backup", "source", e.Config.ContainerName, "backup", backupName)
 	return nil
 }
 
@@ -56,6 +58,7 @@ func (e *Engine) installContainer() error {
 
 	cli := e.Config.Client.Client
 
+	slog.Info("Install Pull", "image", e.Config.GetImageName())
 	if err := e.pullImage(ctx, cli, e.Config.GetImageName()); err != nil {
 		return err
 	}
@@ -65,11 +68,13 @@ func (e *Engine) installContainer() error {
 		return err
 	}
 	if containerID != "" {
+		slog.Info("Install Remove", "name", e.Config.ContainerName)
 		if _, err := cli.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return err
 		}
 	}
 
+	slog.Info("Install Create", "name", e.Config.ContainerName, "port", e.Config.ServerPort)
 	createOpts, err := e.containerCreateOptions()
 	if err != nil {
 		return err
@@ -84,7 +89,12 @@ func (e *Engine) installContainer() error {
 		return err
 	}
 
-	slog.Info("Container installed", "container_id", created.ID, "container_name", e.Config.ContainerName)
+	// 写 .env 到安装目录
+	if err := e.writeEnv(); err != nil {
+		return err
+	}
+
+	slog.Info("Install Started", "id", created.ID[:12])
 	return nil
 }
 
@@ -99,17 +109,55 @@ func (e *Engine) uninstallContainer() error {
 		return err
 	}
 	if containerID != "" {
+		slog.Info("Uninstall Remove", "name", e.Config.ContainerName)
 		if _, err := cli.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return err
 		}
 	}
 
 	if e.Config.UninstallRemoveData && e.Config.DataPath != "" {
+		slog.Info("Uninstall RemoveData", "path", e.Config.DataPath)
 		if err := os.RemoveAll(e.Config.DataPath); err != nil {
 			return fmt.Errorf("remove data path failed: %w", err)
 		}
 	}
 
+	// 清理 .env
+	_ = os.Remove(e.envPath())
+
+	return nil
+}
+
+// exportContainerEnv 从容器导出环境变量到安装目录 .env
+func (e *Engine) exportContainerEnv(containerID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cli := e.Config.Client.Client
+	inspect, err := cli.ContainerInspect(ctx, containerID, dockerclient.ContainerInspectOptions{})
+	if err != nil {
+		return fmt.Errorf("inspect container failed: %w", err)
+	}
+
+	env := make(map[string]string)
+	for _, line := range inspect.Container.Config.Env {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			env[parts[0]] = parts[1]
+		}
+	}
+
+	// 去掉不需要持久化的系统变量
+	delete(env, "PATH")
+	delete(env, "HOME")
+	delete(env, "HOSTNAME")
+
+	envPath := e.envPath()
+	if err := WriteEnv(envPath, env); err != nil {
+		return err
+	}
+
+	slog.Info("Upgrade Export", "path", envPath)
 	return nil
 }
 
@@ -165,8 +213,8 @@ func (e *Engine) containerCreateOptions() (dockerclient.ContainerCreateOptions, 
 			return dockerclient.ContainerCreateOptions{}, err
 		}
 	}
-	if e.Config.Port > 0 {
-		if err := addPortBinding(fmt.Sprintf("%d", e.Config.Port), "8080"); err != nil {
+	if e.Config.ServerPort > 0 {
+		if err := addPortBinding(fmt.Sprintf("%d", e.Config.ServerPort), "8080"); err != nil {
 			return dockerclient.ContainerCreateOptions{}, err
 		}
 	} else {
@@ -177,10 +225,25 @@ func (e *Engine) containerCreateOptions() (dockerclient.ContainerCreateOptions, 
 		exposedPorts[port] = struct{}{}
 	}
 
+	// 从安装目录 .env 读取用户自定义变量，合并到容器 env
 	env := []string{fmt.Sprintf("APP_NAME=%s", e.Config.ContainerName)}
-	if e.Config.HTTPProxy != "" {
-		env = append(env, fmt.Sprintf("HTTP_PROXY=%s", e.Config.HTTPProxy))
-		env = append(env, fmt.Sprintf("HTTPS_PROXY=%s", e.Config.HTTPProxy))
+
+	// 读取 .env 中的用户自定义变量
+	envPath := e.envPath()
+	if envMap, err := ReadEnv(envPath); err == nil {
+		for k, v := range envMap {
+			// 跳过安装器管理的 key（已由 Config 显式设置）
+			if k == "PID" {
+				continue
+			}
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+
+	// 安装器管理的 key 从 Config 覆盖
+	installEnv := e.buildInstallEnv()
+	for k, v := range installEnv {
+		env = append(env, fmt.Sprintf("%s=%s", k, v))
 	}
 
 	hostConfig := &containerapi.HostConfig{
@@ -221,6 +284,30 @@ func (e *Engine) containerCreateOptions() (dockerclient.ContainerCreateOptions, 
 		HostConfig: hostConfig,
 		Name:       e.Config.ContainerName,
 	}, nil
+}
+
+// buildInstallEnv 构建安装器管理的环境变量
+func (e *Engine) buildInstallEnv() map[string]string {
+	dataPath, _ := filepath.Abs(e.Config.DataPath)
+	env := map[string]string{
+		"APP_NAME":                    e.Config.ContainerName,
+		"DP_SYSTEM_STORAGE_LOCAL_PATH": dataPath,
+		"STORAGE_LOCAL_PATH":          dataPath,
+		"APP_SERVER_HOST":             e.Config.ServerHost,
+		"APP_SERVER_PORT":             strconv.Itoa(e.Config.ServerPort),
+	}
+	if e.Config.HTTPProxy != "" {
+		env["HTTP_PROXY"] = e.Config.HTTPProxy
+		env["HTTPS_PROXY"] = e.Config.HTTPProxy
+	}
+	if e.Config.DNS != "" {
+		env["DP_DNS"] = e.Config.DNS
+	}
+	if e.Config.Version == types.VersionBE {
+		env["DP_LOG_CONSOLE_LEVEL"] = "debug"
+		env["DP_LOG_FILE_LEVEL"] = "debug"
+	}
+	return env
 }
 
 func (e *Engine) isPodmanClient() bool {
