@@ -183,6 +183,9 @@ func (e *Engine) installBinary() error {
 		return err
 	}
 
+	// 下载完成后停止残余进程（目录被删除但进程未停止的情况）
+	e.processStop()
+
 	// 从临时目录复制到安装目录
 	tempDir := e.downloadPath()
 	slog.Info("Install", "copy", installDir)

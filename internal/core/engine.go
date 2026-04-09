@@ -35,6 +35,23 @@ func (e *Engine) Run() error {
 		}
 	}
 
+	// 自动检测 Registry（安装/升级时）
+	if e.Config.Registry == "" && e.Config.Action != types.ActionUninstall {
+		slog.Info("Registry", "status", "detecting")
+		hubLatency := config.TestRegistryLatency(types.RegistryDockerHub)
+		aliLatency := config.TestRegistryLatency(types.RegistryAliYun)
+
+		e.Config.Registry = types.RegistryUnavailable
+		if aliLatency > 0 {
+			e.Config.Registry = types.RegistryAliYun
+		}
+		if hubLatency > 0 && (aliLatency <= 0 || hubLatency <= aliLatency) {
+			e.Config.Registry = types.RegistryDockerHub
+		}
+
+		slog.Info("Registry", "selected", e.Config.Registry, "hub_ms", hubLatency, "aliyun_ms", aliLatency)
+	}
+
 	switch e.Config.Action {
 	case types.ActionInstall:
 		switch e.Config.InstallType {
@@ -75,7 +92,7 @@ func (e *Engine) LogConfig() {
 		dockerStatus = "available"
 	}
 	slog.Info("Config", "os", cfg.OS, "arch", cfg.Arch, "docker", dockerStatus)
-	slog.Info("Config", "type", cfg.InstallType, "version", cfg.Version, "edition", cfg.Edition, "base_image", cfg.BaseImage, "registry", cfg.Registry)
+	slog.Info("Config", "type", cfg.InstallType, "version", cfg.Version, "edition", cfg.Edition, "base_image", cfg.BaseImage)
 	slog.Info("Config", "name", cfg.ContainerName, "port", cfg.ServerPort, "binary", cfg.BinaryPath, "data", cfg.DataPath)
 	if cfg.DNS != "" {
 		slog.Info("Config", "dns", cfg.DNS)

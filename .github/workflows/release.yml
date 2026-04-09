@@ -55,7 +55,10 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
         run: |
-          go build -ldflags="-s -w" -o "dpanel-installer-${GOOS}-${GOARCH}${{ matrix.suffix }}" main.go
+          VERSION="${GITHUB_REF_NAME}"
+          COMMIT="${GITHUB_SHA:0:7}"
+          DATE=$(date -u +%Y-%m-%d)
+          go build -ldflags="-s -w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" -o "dpanel-installer-${GOOS}-${GOARCH}${{ matrix.suffix }}" main.go
 
       - name: Upload to release
         env:

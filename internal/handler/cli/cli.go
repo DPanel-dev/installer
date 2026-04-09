@@ -29,7 +29,6 @@ type CLI struct {
 	flagVersion     string
 	flagEdition     string
 	flagBaseImage   string
-	flagRegistry    string
 	flagName        string
 	flagServerHost  string
 	flagServerPort  int
@@ -133,7 +132,6 @@ func (c *CLI) buildInstallCmd() *cobra.Command {
 
 	c.addCommonFlags(cmd)
 	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
-	cmd.Flags().StringVar(&c.flagRegistry, "registry", "", "Image registry (e.g., registry.cn-hangzhou.aliyuncs.com)")
 	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
 	cmd.Flags().StringVar(&c.flagProxy, "proxy", "", "Proxy address (used for both HTTP and HTTPS)")
 	cmd.Flags().StringVar(&c.flagDNS, "dns", "", "DNS server address")
@@ -153,7 +151,6 @@ func (c *CLI) buildUpgradeCmd() *cobra.Command {
 
 	c.addCommonFlags(cmd)
 	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
-	cmd.Flags().StringVar(&c.flagRegistry, "registry", "", "Image registry (e.g., registry.cn-hangzhou.aliyuncs.com)")
 	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
 	cmd.Flags().BoolVar(&c.flagBackup, "backup", true, "Create backup before upgrade")
 
@@ -299,9 +296,6 @@ func (c *CLI) buildOptions(cmd *cobra.Command) []config.Option {
 	}
 	if cmd.Flags().Changed("base-image") {
 		opts = append(opts, config.WithBaseImage(c.flagBaseImage))
-	}
-	if cmd.Flags().Changed("registry") {
-		opts = append(opts, config.WithRegistry(c.flagRegistry))
 	}
 	if cmd.Flags().Changed("name") {
 		opts = append(opts, config.WithContainerName(c.flagName))
