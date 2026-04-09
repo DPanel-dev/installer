@@ -348,7 +348,7 @@ func (e *Engine) processStart() error {
 	configYaml := filepath.Join(filepath.Dir(installPath), "config.yaml")
 
 	cmd := exec.Command(installPath, "server:start", "-f", configYaml)
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = sysProcAttr()
 
 	cmdEnv, err := buildCmdEnv(e.Config.BinaryPath)
 	if err != nil {
