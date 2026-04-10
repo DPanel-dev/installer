@@ -911,7 +911,7 @@ func (t *TUI) renderConfirm() string {
 		{i18n.T("select_registry"), cfg.Registry},
 		{i18n.T("select_version"), cfg.Version},
 		{i18n.T("select_edition"), cfg.Edition},
-		{i18n.T("container_name"), cfg.ContainerName},
+		{i18n.T("container_name"), cfg.Name},
 		{i18n.T("access_port"), strconv.Itoa(cfg.ServerPort)},
 		{i18n.T("data_path"), cfg.DataPath},
 	}

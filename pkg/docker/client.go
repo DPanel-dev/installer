@@ -2,6 +2,8 @@ package docker
 
 import (
 	"context"
+	"runtime"
+	"strings"
 	"time"
 
 	dockerclient "github.com/moby/moby/client"
@@ -65,4 +67,42 @@ func newClient(opts ...dockerclient.Opt) (*Client, error) {
 	return &Client{
 		Client: cli,
 	}, nil
+}
+
+// DaemonHost 返回适合容器 bind 挂载的 Docker/Podman socket 路径。
+//
+// 各平台处理：
+//   - macOS Docker Desktop: VirtioFS 无法挂载 ~/.docker/run/docker.sock，使用 /var/run/docker.sock
+//   - Windows Docker Desktop: npipe 无法挂载到容器，返回空字符串
+//   - Linux / Podman / rootless: 返回实际检测到的 socket 路径
+func (c *Client) DaemonHost() string {
+	if c == nil || c.Client == nil {
+		return DefaultDockerSockPath
+	}
+
+	host := c.Client.DaemonHost()
+	path := SockPathFromHost(host)
+
+	// Windows named pipe 无法挂载到容器
+	if strings.HasPrefix(host, "npipe://") {
+		return ""
+	}
+
+	// macOS Docker Desktop: VirtioFS 限制，必须用 /var/run/docker.sock
+	if runtime.GOOS == "darwin" && !c.IsPodman() {
+		return "/var/run/docker.sock"
+	}
+
+	if path == "" {
+		return DefaultDockerSockPath
+	}
+	return path
+}
+
+// IsPodman 检测当前连接是否为 Podman
+func (c *Client) IsPodman() bool {
+	if c == nil || c.Client == nil {
+		return false
+	}
+	return strings.Contains(c.Client.DaemonHost(), "podman")
 }

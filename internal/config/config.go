@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"runtime"
 
 	"github.com/dpanel-dev/installer/internal/types"
@@ -32,14 +30,14 @@ type Config struct {
 	BaseImage string // alpine, debian - 镜像基础系统
 	Registry  string // docker.io, registry.cn-hangzhou.aliyuncs.com, unavailable
 
-	// === 容器配置 ===
-	ContainerName string
+	// === 实例配置 ===
+	Name string // 实例名称：容器名 / 二进制进程名（全局唯一）
 	ServerHost    string // 绑定地址：0.0.0.0 或 127.0.0.1
 	ServerPort    int    // 0 = 随机端口
-	DataPath      string
+	DataPath      string // --data-path：容器挂载目录 / 二进制根目录
 
 	// === 二进制配置 ===
-	BinaryPath string // 自定义二进制安装路径，为空则使用默认路径
+	BinaryPath string // 二进制路径（由 DataPath + Name 推算）
 
 	// === 网络配置 ===
 	DNS        string
@@ -79,9 +77,9 @@ func NewConfig(opts ...Option) (*Config, error) {
 		WithLanguage(types.LanguageZh),
 		WithVersion(types.VersionCE),
 		WithEdition(types.EditionLite),
-		WithContainerName("dpanel"),
-		WithUpgradeBackup(true),
-		WithUninstallRemoveData(false),
+		WithName("dpanel"),
+		WithEnableBackup(true),
+		WithEnableDeleteData(false),
 	}
 
 	// 3. 根据环境 append
@@ -108,9 +106,6 @@ func NewConfig(opts ...Option) (*Config, error) {
 
 	defaults = append(defaults, WithServerHost(types.ServerHostAll))
 	defaults = append(defaults, WithServerPort(FindAvailablePort(8080)))
-
-	homeDir, _ := os.UserHomeDir()
-	defaults = append(defaults, WithInstallPath(filepath.Join(homeDir, "dpanel")))
 
 	// 4. 先应用默认值，再应用用户覆盖
 	for _, opt := range append(defaults, opts...) {

@@ -210,7 +210,7 @@ Config (config.Config)
 ├── Edition: types.EditionStandard | EditionLite
 ├── BaseImage: types.BaseImageAlpine | BaseImageDebian | BaseImageDarwin | BaseImageWindows
 ├── Registry: types.RegistryDockerHub | RegistryAliYun | RegistryUnavailable
-├── ContainerName: string (默认 "dpanel")
+├── Name: string (默认 "dpanel"，全局唯一标识：容器名 / 二进制进程名)
 ├── Port: int (0 表示随机端口)
 ├── DataPath: string
 ├── BinaryPath: string
@@ -873,7 +873,7 @@ Press 'q' to quit
 8. **StepEdition** - 选择版本类型 → 标准版 / 精简版
 9. **StepBaseImage** - 选择基础镜像 → Alpine / Debian / Darwin / Windows
 10. **StepDockerSock** - Docker Socket 路径（仅容器安装）
-11. **StepContainerName** - 容器名称 → 默认 "dpanel"
+11. **StepName** - 实例名称 → 默认 "dpanel"
 12. **StepPort** - 访问端口
 13. **StepDataPath** - 数据存储路径（支持浏览模式）
 14. **StepProxy** - 代理地址（可选，仅容器安装）
@@ -977,7 +977,7 @@ slog.Debug("Environment check", "docker", true)
 
 // ✅ 正确：带上下文的日志
 slog.Info("Creating container",
-    "name", cfg.ContainerName,
+    "name", cfg.Name,
     "port", cfg.Port,
     "image", cfg.GetImageName())
 
@@ -1102,7 +1102,7 @@ func (e *Engine) saveInstallationLog() error {
     fmt.Fprintf(logFile, "Date: %s\n", time.Now().Format("2006-01-02 15:04:05"))
     fmt.Fprintf(logFile, "Version: %s\n", e.Config.Version)
     fmt.Fprintf(logFile, "\n=== Configuration ===\n")
-    fmt.Fprintf(logFile, "Container Name: %s\n", e.Config.ContainerName)
+    fmt.Fprintf(logFile, "Name: %s\n", e.Config.Name)
     fmt.Fprintf(logFile, "\n=== Execution Command ===\n")
     fmt.Fprintf(logFile, "%s\n", command)
 

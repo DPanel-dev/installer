@@ -67,15 +67,67 @@ var StepDefinitions = map[Step]StepDefinition{
 		},
 		Next: func(cfg *config.Config) Step {
 			switch cfg.Action {
-			case types.ActionInstall, types.ActionUpgrade:
-				// 安装/升级：进入镜像选择（进入前执行 PreRun 检测）
+			case types.ActionInstall:
+				// 安装：进入镜像选择
 				return StepRegistry
-			case types.ActionUninstall:
-				// 卸载：直接到容器名称
-				return StepContainerName
+			case types.ActionUpgrade, types.ActionUninstall:
+				// 升级/卸载：先展示已安装实例列表
+				return StepInstanceSelect
 			default:
 				return StepInstallType
 			}
+		},
+	},
+
+	// ========== 实例选择（upgrade/uninstall）==========
+	StepInstanceSelect: {
+		Type:     StepTypeMenu,
+		TitleKey: "select_instance",
+		Message: func(cfg *config.Config) *MessageContent {
+			instances := cfg.DiscoverInstances()
+			if len(instances) == 0 {
+				return &MessageContent{Type: MessageTypeWarning, Content: i18n.T("no_instances_found")}
+			}
+			return nil
+		},
+		Options: func(cfg *config.Config) []OptionItem {
+			instances := cfg.DiscoverInstances()
+			if len(instances) == 0 {
+				return nil
+			}
+			items := make([]OptionItem, len(instances))
+			for i, inst := range instances {
+				typeLabel := "container"
+				if inst.Type == types.InstallTypeBinary {
+					typeLabel = "binary"
+				}
+				statusLabel := "running"
+				if !inst.Running {
+					statusLabel = "stopped"
+				}
+				items[i] = OptionItem{
+					Value:       inst.Name,
+					Label:       inst.Name,
+					Description: fmt.Sprintf("%s (%s)", typeLabel, statusLabel),
+				}
+			}
+			return items
+		},
+		Finish: func(cfg *config.Config, value string) error {
+			cfg.Name = value
+			// 从实例列表中获取 type
+			inst := cfg.FindInstance(value)
+			if inst != nil {
+				cfg.InstallType = inst.Type
+			}
+			return nil
+		},
+		Next: func(cfg *config.Config) Step {
+			if cfg.Action == types.ActionUpgrade {
+				return StepRegistry
+			}
+			// uninstall：直接到确认
+			return StepConfirm
 		},
 	},
 
@@ -355,7 +407,7 @@ var StepDefinitions = map[Step]StepDefinition{
 			cfg.Client = cli
 			return nil
 		},
-		Next: NextStep(StepContainerName),
+		Next: NextStep(StepName),
 	},
 
 	// ========== 镜像仓库 ==========
@@ -421,20 +473,20 @@ var StepDefinitions = map[Step]StepDefinition{
 	},
 
 	// ========== 容器名称 ==========
-	StepContainerName: {
+	StepName: {
 		Type:     StepTypeInput,
 		TitleKey: "container_name",
 		Options: func(cfg *config.Config) []OptionItem {
 			return []OptionItem{
 				{
-					Value:       cfg.ContainerName,
+					Value:       cfg.Name,
 					Label:       "dpanel",
 					Description: "container_name_hint",
 				},
 			}
 		},
 		Finish: func(cfg *config.Config, value string) error {
-			cfg.ContainerName = value
+			cfg.Name = value
 			return nil
 		},
 		Next: NextStep(StepPort),
@@ -553,8 +605,23 @@ var StepDefinitions = map[Step]StepDefinition{
 		Type:     StepTypeProgress,
 		TitleKey: "installing",
 		Finish: func(cfg *config.Config, value string) error {
-			engine := core.NewEngine(cfg)
-			return engine.Run()
+			var driver types.Driver
+			switch cfg.InstallType {
+			case types.InstallTypeContainer:
+				driver = core.NewContainerDriver(cfg)
+			case types.InstallTypeBinary:
+				driver = core.NewBinaryDriver(cfg)
+			}
+
+			switch cfg.Action {
+			case types.ActionInstall:
+				return driver.Install()
+			case types.ActionUpgrade:
+				return driver.Upgrade()
+			case types.ActionUninstall:
+				return driver.Uninstall()
+			}
+			return nil
 		},
 		Next: NextStep(StepComplete),
 	},

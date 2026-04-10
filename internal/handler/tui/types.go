@@ -34,13 +34,14 @@ const (
 	StepMirrorCheck
 	StepRegistry
 	StepInstallType
+	StepInstanceSelect     // 选择已安装实例（upgrade/uninstall）
 	StepInstallDocker      // 确认是否在线安装 Docker
 	StepInstallingDocker   // 执行 Docker 在线安装
 	StepVersion
 	StepEdition
 	StepBaseImage
 	StepDockerSock         // Docker Sock 文件路径
-	StepContainerName
+	StepName
 	StepPort
 	StepDataPath
 	StepProxy
@@ -64,6 +65,8 @@ func (s Step) String() string {
 		return "registry"
 	case StepInstallType:
 		return "install_type"
+	case StepInstanceSelect:
+		return "instance_select"
 	case StepInstallDocker:
 		return "install_docker"
 	case StepInstallingDocker:
@@ -76,7 +79,7 @@ func (s Step) String() string {
 		return "base_image"
 	case StepDockerSock:
 		return "docker_sock"
-	case StepContainerName:
+	case StepName:
 		return "container_name"
 	case StepPort:
 		return "port"

@@ -149,5 +149,7 @@
   "confirm_desc": "Proceed with the installation",
   "cancel_desc": "Go back to modify settings",
   "unknown_step": "Unknown Step",
-  "checking_mirror_sources": "Checking mirror connectivity..."
+  "checking_mirror_sources": "Checking mirror connectivity...",
+  "select_instance": "Select Instance",
+  "no_instances_found": "No DPanel instances found."
 }

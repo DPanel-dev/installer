@@ -149,5 +149,7 @@
   "confirm_desc": "开始执行安装",
   "cancel_desc": "返回修改配置",
   "unknown_step": "未知步骤",
-  "checking_mirror_sources": "正在检测镜像源连通性..."
+  "checking_mirror_sources": "正在检测镜像源连通性...",
+  "select_instance": "选择实例",
+  "no_instances_found": "未发现 DPanel 实例。"
 }

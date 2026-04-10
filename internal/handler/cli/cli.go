@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -25,20 +24,19 @@ type CLI struct {
 	flagYes      bool
 
 	// 子命令 flags（通过 cobra 绑定）
-	flagType        string
-	flagVersion     string
-	flagEdition     string
-	flagBaseImage   string
-	flagName        string
-	flagServerHost  string
-	flagServerPort  int
-	flagInstallPath string
-	flagDataPath    string
-	flagDockerSock  string
-	flagProxy       string
-	flagDNS         string
-	flagBackup      bool
-	flagRemoveData  bool
+	flagType       string
+	flagVersion    string
+	flagEdition    string
+	flagBaseImage  string
+	flagName       string
+	flagServerHost string
+	flagServerPort int
+	flagDataPath   string
+	flagDockerSock string
+	flagEnvProxy      string
+	flagEnvDNS        string
+	flagEnableBackup  bool
+	flagEnableDeleteData bool
 }
 
 // Option 配置选项函数
@@ -108,33 +106,32 @@ func (c *CLI) buildRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-// addCommonFlags 添加通用 flags（install/upgrade 共享）
-func (c *CLI) addCommonFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&c.flagType, "type", "", "Install type: container or binary")
-	cmd.Flags().StringVar(&c.flagVersion, "version", "", "DPanel version: ce (community), pe (pro), be (dev)")
-	cmd.Flags().StringVar(&c.flagEdition, "edition", "", "Edition: standard or lite (standard only for container install)")
-	cmd.Flags().StringVar(&c.flagServerHost, "server-host", "", "Server bind host (default: 0.0.0.0)")
-	cmd.Flags().IntVar(&c.flagServerPort, "server-port", 0, "Server port (0 for random)")
-	cmd.Flags().StringVar(&c.flagInstallPath, "install-path", "", "Installation directory (auto-derives binary and data paths)")
-	cmd.Flags().StringVar(&c.flagDataPath, "data-path", "", "Data storage path (overrides auto-derived path from --install-path)")
-	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
-}
-
 // buildInstallCmd 构建 install 子命令
 func (c *CLI) buildInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install DPanel",
+		Long: `Install a new DPanel instance.
+
+The instance is identified by --name (default: "dpanel").
+Use --data-path to specify the data directory (required for container install,
+binary install uses it as root: <data-path>/dpanel-<name> for binary, <data-path>/data/ for data).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.applyAndRun(cmd, types.ActionInstall)
 		},
 	}
 
-	c.addCommonFlags(cmd)
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Instance name (default: dpanel)")
+	cmd.Flags().StringVar(&c.flagDataPath, "data-path", "", "Data directory (required for container; binary root dir)")
+	cmd.Flags().StringVar(&c.flagType, "type", "", "Install type: container or binary (auto-detected if not specified)")
+	cmd.Flags().StringVar(&c.flagVersion, "version", "", "DPanel version: ce (community), pe (pro), be (dev)")
+	cmd.Flags().StringVar(&c.flagEdition, "edition", "", "Edition: standard or lite (standard only for container install)")
 	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
-	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
-	cmd.Flags().StringVar(&c.flagProxy, "proxy", "", "Proxy address (used for both HTTP and HTTPS)")
-	cmd.Flags().StringVar(&c.flagDNS, "dns", "", "DNS server address")
+	cmd.Flags().StringVar(&c.flagServerHost, "server-host", "", "Server bind host (default: 0.0.0.0)")
+	cmd.Flags().IntVar(&c.flagServerPort, "server-port", 0, "Server port (0 for random)")
+	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
+	cmd.Flags().StringVar(&c.flagEnvProxy, "env-proxy", "", "Proxy environment variable (used for both HTTP and HTTPS)")
+	cmd.Flags().StringVar(&c.flagEnvDNS, "env-dns", "", "DNS environment variable")
 
 	return cmd
 }
@@ -144,15 +141,24 @@ func (c *CLI) buildUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade existing DPanel installation",
+		Long: `Upgrade an existing DPanel installation.
+
+Requires --name to identify the instance.
+The type (container/binary) is auto-detected by searching for the name.
+Existing configuration is preserved; only --version/--edition override the image,
+and --proxy/--dns override environment variables.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.applyAndRun(cmd, types.ActionUpgrade)
 		},
 	}
 
-	c.addCommonFlags(cmd)
-	cmd.Flags().StringVar(&c.flagBaseImage, "base-image", "", "Base image system: alpine, debian, darwin, windows (only for binary install, auto-detected by default)")
-	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
-	cmd.Flags().BoolVar(&c.flagBackup, "backup", true, "Create backup before upgrade")
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Instance name (required)")
+	cmd.Flags().StringVar(&c.flagVersion, "version", "", "DPanel version: ce (community), pe (pro), be (dev) (keep existing if not specified)")
+	cmd.Flags().StringVar(&c.flagEdition, "edition", "", "Edition: standard or lite (keep existing if not specified)")
+	cmd.Flags().StringVar(&c.flagEnvProxy, "env-proxy", "", "Proxy environment variable (override existing)")
+	cmd.Flags().StringVar(&c.flagEnvDNS, "env-dns", "", "DNS environment variable (override existing)")
+	cmd.Flags().BoolVar(&c.flagEnableBackup, "enable-backup", true, "Create backup before upgrade")
+	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
 
 	return cmd
 }
@@ -162,22 +168,24 @@ func (c *CLI) buildUninstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Uninstall DPanel",
+		Long: `Uninstall a DPanel installation.
+
+Requires --name to identify the instance.
+The type (container/binary) is auto-detected by searching for the name.
+Use --remove-data to also delete the data directory.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.applyAndRun(cmd, types.ActionUninstall)
 		},
 	}
 
-	cmd.Flags().StringVar(&c.flagType, "type", "", "Install type: container or binary (auto-detected if not specified)")
-	cmd.Flags().StringVar(&c.flagInstallPath, "install-path", "", "Installation directory (auto-derives binary and data paths)")
-	cmd.Flags().StringVar(&c.flagDataPath, "data-path", "", "Data storage path (overrides auto-derived path from --install-path)")
+	cmd.Flags().StringVar(&c.flagName, "name", "", "Instance name (required)")
+	cmd.Flags().BoolVar(&c.flagEnableDeleteData, "enable-delete-data", false, "Delete data directory")
 	cmd.Flags().StringVar(&c.flagDockerSock, "docker-sock", "", "Docker socket path (for local connection)")
-	cmd.Flags().StringVar(&c.flagName, "name", "", "Container name")
-	cmd.Flags().BoolVar(&c.flagRemoveData, "remove-data", false, "Remove data directory")
 
 	return cmd
 }
 
-// applyAndRun 应用 flags 到 config，确认提示，然后执行
+// applyAndRun 应用 flags 到 config，查找实例，确认提示，然后执行
 func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
 	// CLI 模式：增加控制台日志
 	setupConsoleLogger(c.flagProgress)
@@ -198,39 +206,70 @@ func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
 		}
 	}
 
-	// 二进制安装且用户未指定 base-image：根据 OS 自动修正
-	if cfg.InstallType == types.InstallTypeBinary && !cmd.Flags().Changed("base-image") {
-		switch cfg.OS {
-		case "darwin":
-			cfg.BaseImage = types.BaseImageDarwin
-		case "windows":
-			cfg.BaseImage = types.BaseImageWindows
-		default:
-			if config.IsMusl() {
-				cfg.BaseImage = types.BaseImageAlpine
-			} else {
-				cfg.BaseImage = types.BaseImageDebian
-			}
-		}
+	// 所有命令必须显式指定 --name
+	if !cmd.Flags().Changed("name") {
+		return fmt.Errorf(`required flag(s) "--name" not set`)
 	}
 
-	engine := core.NewEngine(cfg)
+	// Install：根据 Docker 可用性推断 type，检测同名实例提示转 upgrade
+	// Upgrade/Uninstall：通过 DiscoverInstances 查找现有实例
+	switch action {
+	case types.ActionInstall:
+		if cfg.InstallType == "" {
+			if cfg.Client != nil {
+				cfg.InstallType = types.InstallTypeContainer
+			} else {
+				cfg.InstallType = types.InstallTypeBinary
+			}
+		}
+		// 检测同名实例，提示切换到 upgrade
+		if inst := cfg.FindInstance(cfg.Name); inst != nil {
+			slog.Warn("Already installed, switching to upgrade mode", "type", inst.Type)
+			cfg.Action = types.ActionUpgrade
+			cfg.InstallType = inst.Type
+		}
+
+	case types.ActionUpgrade, types.ActionUninstall:
+		inst := cfg.FindInstance(cfg.Name)
+		if inst == nil {
+			return fmt.Errorf(`%q not found`, cfg.Name)
+		}
+		cfg.InstallType = inst.Type
+	}
+
+	// 创建最终 Driver
+	var driver types.Driver
+	switch cfg.InstallType {
+	case types.InstallTypeContainer:
+		driver = core.NewContainerDriver(cfg)
+	case types.InstallTypeBinary:
+		driver = core.NewBinaryDriver(cfg)
+	}
 
 	// 设置进度回调
 	if c.flagProgress != ProgressQuiet {
-		engine.ProgressFunc = ShowProgress
-		engine.ProgressDone = FinishProgress
+		if bd, ok := driver.(*core.BinaryDriver); ok {
+			bd.ProgressFunc = ShowProgress
+			bd.ProgressDone = FinishProgress
+		}
+		if cd, ok := driver.(*core.ContainerDriver); ok {
+			cd.ProgressFunc = ShowProgress
+			cd.ProgressDone = FinishProgress
+		}
 	}
 
-	// 先显示配置信息
-	engine.LogConfig()
+	// 显示配置信息
+	core.LogConfig(cfg)
 
-	// 安装时检测是否已存在 → 自动转为升级
-	if cfg.Action == types.ActionInstall {
-		if _, err := os.Stat(cfg.BinaryPath); err == nil {
-			slog.Warn("Already installed")
-			cfg.Action = types.ActionUpgrade
-		}
+	// 检测状态并提示
+	status := driver.Status()
+	if status.Running {
+		slog.Warn("Already running", "id", status.ID)
+	}
+
+	// 真正的新安装才需要 data-path
+	if cfg.Action == types.ActionInstall && cfg.DataPath == "" {
+		return fmt.Errorf(`required flag(s) "--data-path" not set`)
 	}
 
 	// 需要确认的操作（uninstall / upgrade），除非 -y
@@ -253,7 +292,16 @@ func (c *CLI) applyAndRun(cmd *cobra.Command, action string) error {
 		}
 	}
 
-	if err := engine.Run(); err != nil {
+	// 调度执行
+	switch cfg.Action {
+	case types.ActionInstall:
+		err = driver.Install()
+	case types.ActionUpgrade:
+		err = driver.Upgrade()
+	case types.ActionUninstall:
+		err = driver.Uninstall()
+	}
+	if err != nil {
 		return err
 	}
 
@@ -285,6 +333,9 @@ func (c *CLI) printAccessURL(cfg *config.Config) {
 func (c *CLI) buildOptions(cmd *cobra.Command) []config.Option {
 	var opts []config.Option
 
+	if cmd.Flags().Changed("name") {
+		opts = append(opts, config.WithName(c.flagName))
+	}
 	if cmd.Flags().Changed("type") {
 		opts = append(opts, config.WithInstallType(c.flagType))
 	}
@@ -297,17 +348,11 @@ func (c *CLI) buildOptions(cmd *cobra.Command) []config.Option {
 	if cmd.Flags().Changed("base-image") {
 		opts = append(opts, config.WithBaseImage(c.flagBaseImage))
 	}
-	if cmd.Flags().Changed("name") {
-		opts = append(opts, config.WithContainerName(c.flagName))
-	}
 	if cmd.Flags().Changed("server-host") {
 		opts = append(opts, config.WithServerHost(c.flagServerHost))
 	}
 	if cmd.Flags().Changed("server-port") {
 		opts = append(opts, config.WithServerPort(c.flagServerPort))
-	}
-	if cmd.Flags().Changed("install-path") {
-		opts = append(opts, config.WithInstallPath(c.flagInstallPath))
 	}
 	if cmd.Flags().Changed("data-path") {
 		opts = append(opts, config.WithDataPath(c.flagDataPath))
@@ -315,17 +360,17 @@ func (c *CLI) buildOptions(cmd *cobra.Command) []config.Option {
 	if cmd.Flags().Changed("docker-sock") {
 		opts = append(opts, config.WithContainerSock(c.flagDockerSock))
 	}
-	if cmd.Flags().Changed("proxy") {
-		opts = append(opts, config.WithHTTPProxy(c.flagProxy))
+	if cmd.Flags().Changed("env-proxy") {
+		opts = append(opts, config.WithEnvProxy(c.flagEnvProxy))
 	}
-	if cmd.Flags().Changed("dns") {
-		opts = append(opts, config.WithDNS(c.flagDNS))
+	if cmd.Flags().Changed("env-dns") {
+		opts = append(opts, config.WithEnvDNS(c.flagEnvDNS))
 	}
-	if cmd.Flags().Changed("backup") {
-		opts = append(opts, config.WithUpgradeBackup(c.flagBackup))
+	if cmd.Flags().Changed("enable-backup") {
+		opts = append(opts, config.WithEnableBackup(c.flagEnableBackup))
 	}
-	if cmd.Flags().Changed("remove-data") {
-		opts = append(opts, config.WithUninstallRemoveData(c.flagRemoveData))
+	if cmd.Flags().Changed("enable-delete-data") {
+		opts = append(opts, config.WithEnableDeleteData(c.flagEnableDeleteData))
 	}
 
 	return opts
